@@ -1,0 +1,46 @@
+contract_version = 1
+
+[capability]
+id = "project-knowledge-steward"
+name = "Project Knowledge Steward"
+governed = true
+description = "Cold-start project knowledge keeper for stable repo workflows, conventions, verification commands, and signals that a dedicated governed capability should be created."
+
+[routing]
+aliases = ["$project-knowledge-steward", "project knowledge steward", "project-knowledge-steward"]
+hints = [
+  "project workflow",
+  "repo convention",
+  "verification command",
+  "working pattern",
+  "project knowledge",
+  "durable lesson",
+  "implementation pattern",
+  "runbook",
+  "candidate skill",
+  "capability candidate",
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule",
+  "latest report",
+  "task schedule",
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Project Working Agreement",
+  "Stable Workflows",
+  "Commands And Verification",
+  "Repo Conventions",
+  "Candidate Skill Signals",
+]

@@ -1,0 +1,137 @@
+"""Tests for governed memory promotion."""
+
+from __future__ import annotations
+
+import argparse
+import shutil
+import subprocess
+import tempfile
+from pathlib import Path
+import unittest
+
+from govkb.commands.apply import run_codex_apply
+from govkb.commands.create_capability import run_create_capability
+from govkb.commands.init import run_init
+from govkb.commands.promote import run_promote
+
+
+class PromoteCommandTests(unittest.TestCase):
+    """Promotion from materialized Codex memory back to repo source."""
+
+    def _scaffold_project(self, temp_dir: str) -> tuple[Path, Path, Path, Path]:
+        project_root = Path(temp_dir) / "DemoProject"
+        codex_home = Path(temp_dir) / "codex-home"
+        project_root.mkdir(parents=True, exist_ok=True)
+        run_init(argparse.Namespace(dest=project_root, project_id="demo-project", project_name="Demo Project"))
+        run_create_capability(argparse.Namespace(capability_id="Workflow Review", project_root=project_root))
+        run_codex_apply(
+            argparse.Namespace(
+                project_root=project_root,
+                release=None,
+                revision="promote-test",
+                codex_home=codex_home,
+                preview=False,
+            )
+        )
+        repo_memory = (
+            project_root
+            / ".governed"
+            / "capabilities"
+            / "workflow-review"
+            / "references"
+            / "long-term-memory.md"
+        )
+        local_memory = codex_home / "skills" / "govkb-demo-project-workflow-review" / "references" / "long-term-memory.md"
+        return project_root, codex_home, repo_memory, local_memory
+
+    def test_promote_applies_append_only_memory_addition(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, repo_memory, local_memory = self._scaffold_project(temp_dir)
+            local_memory.write_text(
+                local_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- Keep estimates anchored to reusable functional slices.\n",
+                encoding="utf-8",
+            )
+
+            exit_code = run_promote(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    assistant="codex",
+                    codex_home=codex_home,
+                    preview=False,
+                    auto=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(
+                "Keep estimates anchored to reusable functional slices.",
+                repo_memory.read_text(encoding="utf-8"),
+            )
+            report_root = project_root / ".governed" / "reports" / "promotions"
+            self.assertTrue(any(report_root.glob("*-promote-report.md")))
+            self.assertTrue((report_root / "latest-promotion-digest.md").is_file())
+
+    def test_promote_rejects_non_append_memory_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, repo_memory, local_memory = self._scaffold_project(temp_dir)
+            original_repo = repo_memory.read_text(encoding="utf-8")
+            local_memory.write_text(original_repo.replace("# Workflow Review", "# Changed Title"), encoding="utf-8")
+
+            exit_code = run_promote(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    assistant="codex",
+                    codex_home=codex_home,
+                    preview=False,
+                    auto=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(repo_memory.read_text(encoding="utf-8"), original_repo)
+
+    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
+    def test_promote_digest_reports_git_status(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _, local_memory = self._scaffold_project(temp_dir)
+            subprocess.run(["git", "init"], cwd=project_root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "govkb@example.local"], cwd=project_root, check=True)
+            subprocess.run(["git", "config", "user.name", "GovKB Test"], cwd=project_root, check=True)
+            subprocess.run(["git", "add", ".governed"], cwd=project_root, check=True)
+            subprocess.run(["git", "commit", "-m", "initial governed package"], cwd=project_root, check=True, capture_output=True)
+
+            local_memory.write_text(
+                local_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- Surface promotion git status in the latest digest.\n",
+                encoding="utf-8",
+            )
+
+            exit_code = run_promote(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    assistant="codex",
+                    codex_home=codex_home,
+                    preview=False,
+                    auto=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            digest = (
+                project_root
+                / ".governed"
+                / "reports"
+                / "promotions"
+                / "latest-promotion-digest.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("git .governed", digest)
+            self.assertIn("long-term-memory.md", digest)
+            self.assertIn("latest-promotion-digest.md", digest)
+
+
+if __name__ == "__main__":
+    unittest.main()

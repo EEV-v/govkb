@@ -1,0 +1,1586 @@
+#!/usr/bin/env python3
+"""Review recent Codex sessions and maintain skill long-term memory.
+
+The model proposes memory candidates; this script decides whether any proposal is
+safe to apply. Ambiguous or approval-gated candidates are staged as patches.
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import difflib
+import fcntl
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+
+CODEX_HOME = Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))).expanduser()
+STATE_DIR = CODEX_HOME / "memories" / "codex-memory-review"
+REPORT_DIR = STATE_DIR / "reports"
+LOG_DIR = STATE_DIR / "logs"
+STATE_FILE = STATE_DIR / "state.json"
+LOCK_FILE = Path("/tmp/codex-memory-review.lock")
+SESSION_INDEX = CODEX_HOME / "session_index.jsonl"
+SESSIONS_DIR = CODEX_HOME / "sessions"
+SKILLS_DIR = CODEX_HOME / "skills"
+INSTALL_STATE_DIR = CODEX_HOME / "memories" / "govkb" / "install-state"
+MIN_AUTO_CONFIDENCE = 0.85
+FILE_ONLY_BACKFILL_DAYS = 14
+
+
+SENSITIVE_PATTERNS = [
+    re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}"),
+    re.compile(r"(?i)\b(bearer|password|client_secret|client secret|secret)\b\s*[:=]\s*\S+"),
+    re.compile(r"(?i)-----BEGIN [A-Z ]*PRIVATE KEY-----"),
+    re.compile(r"(?i)\b(auth\.json|funding_creds)\b"),
+    re.compile(r"(?i)\b[A-Z0-9_]*(TOKEN|SECRET|PASSWORD)[A-Z0-9_]*\b\s*[:=]\s*\S+"),
+    re.compile(r"(?i)\b[A-Z0-9_]*(API_KEY|APIKEY|KEY)[A-Z0-9_]*\b\s*[:=]\s*\S+"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+]
+
+
+STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "must",
+    "of",
+    "on",
+    "or",
+    "should",
+    "that",
+    "the",
+    "to",
+    "when",
+    "with",
+}
+
+
+@dataclass(frozen=True)
+class SessionRef:
+    id: str
+    thread_name: str
+    updated_at: str
+    path: Path
+    indexed: bool
+
+
+@dataclass(frozen=True)
+class MemoryTarget:
+    skill: str
+    capability_id: str
+    project_id: str | None
+    path: Path
+    requires_explicit_acceptance: bool
+    headings: tuple[str, ...]
+    content: str
+    aliases: tuple[str, ...]
+    hints: tuple[str, ...]
+    negative_hints: tuple[str, ...]
+    project_root: Path | None
+
+
+@dataclass(frozen=True)
+class DiscoveryStats:
+    indexed_rows: int
+    indexed_missing_files: int
+    file_only_recent_unprocessed: int
+    selected_indexed: int
+    selected_file_only: int
+
+
+@dataclass(frozen=True)
+class SessionSignals:
+    user_text: str
+    assistant_text: str
+    task_complete_text: str
+    explicit_skills: tuple[str, ...]
+    hinted_skills: tuple[str, ...]
+    generic_relevance: bool
+    self_referential: bool
+
+
+GENERIC_RELEVANCE_PATTERNS = [
+    re.compile(r"(?i)\bseverity:\b"),
+    re.compile(r"(?i)\bretrospective\b"),
+    re.compile(r"(?i)\broot cause\b"),
+    re.compile(r"(?i)\bregression\b"),
+    re.compile(r"(?i)\brecommendation\b"),
+    re.compile(r"(?i)\bimplementation-plan\b"),
+    re.compile(r"(?i)\breview\b"),
+    re.compile(r"(?i)\bbugfix\b"),
+    re.compile(r"(?i)\bworkflow\b"),
+    re.compile(r"(?i)\brunbook\b"),
+    re.compile(r"(?i)\bplaybook\b"),
+    re.compile(r"(?i)\bstartup\b"),
+    re.compile(r"(?i)\bverification commands?\b"),
+    re.compile(r"(?i)\beffective ports?\b"),
+]
+
+
+SELF_REFERENTIAL_PATTERNS = [
+    re.compile(r"(?i)codex-memory-review"),
+    re.compile(r"(?i)\.codex/memories/codex-memory-review"),
+    re.compile(r"(?i)\bsession_index\.jsonl\b"),
+    re.compile(r"(?i)\bstate\.json\b"),
+    re.compile(r"(?i)\bcron\.log\b"),
+    re.compile(r"(?i)\blatest report\b"),
+    re.compile(r"(?i)\bshow me .*report\b"),
+    re.compile(r"(?i)\bhow .*task works\b"),
+    re.compile(r"(?i)\bgoal of that task\b"),
+    re.compile(r"(?i)\bwhere it could be improved\b"),
+    re.compile(r"(?i)\bwhat is the schedule\b"),
+]
+
+
+ENVIRONMENT_LOCAL_PATTERNS = [
+    (re.compile(r"(?i)\btop-level project directory\b"), "lesson is about local workspace layout, not durable skill behavior"),
+    (re.compile(r"(?i)\bgit -C\b"), "lesson is about local git invocation details, not durable skill behavior"),
+    (re.compile(r"(?i)\.codex/"), "lesson is about Codex local file layout, not target skill behavior"),
+    (re.compile(r"(?i)\bcodex-memory-review\b"), "lesson is about the memory-review tool itself"),
+    (re.compile(r"(?i)\b(read-only|readonly) (codex )?(sandbox|session|sessions|investigation|investigations)\b"), "lesson is about assistant runtime mode, not durable project behavior"),
+    (re.compile(r"(?i)\bMSBuild\b.*\bread-only file system\b"), "lesson is about assistant runtime mode, not durable project behavior"),
+    (re.compile(r"(?i)\bSystem\.IO\.IOException:\s*Read-only file system\b"), "lesson is about assistant runtime mode, not durable project behavior"),
+    (re.compile(r"(?i)\blocal sandbox/tooling blocker\b"), "lesson is about assistant runtime mode, not durable project behavior"),
+]
+
+
+def utc_now() -> dt.datetime:
+    return dt.datetime.now(dt.timezone.utc)
+
+
+def parse_time(value: str) -> dt.datetime:
+    return dt.datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def iso_utc(value: dt.datetime) -> str:
+    return value.astimezone(dt.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def normalize_scope_id(value: str) -> str:
+    normalized = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
+    return normalized or "project"
+
+
+def project_id_from_root(project_root: Path) -> str:
+    manifest = project_root / ".governed" / "project.toml"
+    if manifest.is_file():
+        match = re.search(r'(?m)^\s*id\s*=\s*"([^"]+)"', manifest.read_text(encoding="utf-8", errors="replace"))
+        if match:
+            return normalize_scope_id(match.group(1))
+    return normalize_scope_id(project_root.name)
+
+
+def configure_review_scope(project_root_arg: str | None) -> Path | None:
+    """Switch state, report, log, and lock paths to one governed project when requested."""
+    if not project_root_arg:
+        return None
+    requested = Path(project_root_arg).expanduser().resolve()
+    project_root = governed_project_root(requested) or requested
+    project_id = project_id_from_root(project_root)
+
+    global STATE_DIR, REPORT_DIR, LOG_DIR, STATE_FILE, LOCK_FILE
+    STATE_DIR = CODEX_HOME / "memories" / "govkb" / "projects" / project_id / "codex-memory-review"
+    REPORT_DIR = STATE_DIR / "reports"
+    LOG_DIR = STATE_DIR / "logs"
+    STATE_FILE = STATE_DIR / "state.json"
+    LOCK_FILE = Path(f"/tmp/codex-memory-review-{project_id}.lock")
+    return project_root
+
+
+def load_project_install_state(project_root: Path) -> dict[str, Any] | None:
+    state_path = INSTALL_STATE_DIR / f"{project_id_from_root(project_root)}--codex.json"
+    if not state_path.is_file():
+        return None
+    try:
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def govkb_subprocess_env(project_root: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["CODEX_HOME"] = str(CODEX_HOME)
+
+    import_root = ""
+    install_state = load_project_install_state(project_root)
+    if isinstance(install_state, dict):
+        configured_root = install_state.get("govkb_import_root")
+        if isinstance(configured_root, str) and configured_root:
+            import_root = configured_root
+
+    if not import_root:
+        for env_name in ("GOVKB_IMPORT_ROOT", "GOVKB_PYTHONPATH"):
+            configured_root = os.environ.get(env_name, "").strip()
+            if configured_root:
+                import_root = configured_root
+                break
+
+    if not import_root:
+        local_candidate = project_root / "govkb" / "src"
+        if (local_candidate / "govkb").is_dir():
+            import_root = str(local_candidate)
+
+    if import_root:
+        existing_pythonpath = env.get("PYTHONPATH", "").strip()
+        env["PYTHONPATH"] = import_root if not existing_pythonpath else f"{import_root}{os.pathsep}{existing_pythonpath}"
+        env["GOVKB_IMPORT_ROOT"] = import_root
+
+    return env
+
+
+def log(message: str) -> None:
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    stamp = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    line = f"{stamp} {message}"
+    print(line)
+    with (LOG_DIR / f"{utc_now().date()}.log").open("a", encoding="utf-8") as fh:
+        fh.write(line + "\n")
+
+
+def acquire_lock() -> Any:
+    LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+    handle = LOCK_FILE.open("w", encoding="utf-8")
+    try:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        raise SystemExit("Another codex-memory-review run is already active.")
+    handle.write(str(os.getpid()))
+    handle.flush()
+    return handle
+
+
+def load_state() -> dict[str, Any]:
+    if not STATE_FILE.exists():
+        return {"processed_sessions": {}}
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        backup = STATE_FILE.with_suffix(f".broken-{utc_now().strftime('%Y%m%d%H%M%S')}.json")
+        shutil.copy2(STATE_FILE, backup)
+        log(f"State file was invalid JSON; copied to {backup}")
+        return {"processed_sessions": {}}
+
+
+def save_state(state: dict[str, Any]) -> None:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = STATE_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    tmp.replace(STATE_FILE)
+
+
+def read_jsonl(path: Path) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rows.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return rows
+
+
+def dedupe_keep_order(items: list[str]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys(item for item in items if item))
+
+
+def newer_timestamp(left: str, right: str) -> str:
+    return left if parse_time(left) >= parse_time(right) else right
+
+
+def parse_session_file(path: Path) -> SessionRef | None:
+    session_id: str | None = None
+    started_at: str | None = None
+
+    with path.open("r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                row = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+
+            if row.get("type") != "session_meta":
+                continue
+
+            payload = row.get("payload") or {}
+            if not isinstance(payload, dict):
+                continue
+            if not session_id:
+                session_id = payload.get("id") or session_id
+            if not started_at:
+                started_at = payload.get("timestamp") or started_at
+            if session_id and started_at:
+                break
+
+    if not session_id:
+        match = re.search(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})", path.name)
+        if match:
+            session_id = match.group(1)
+    if not session_id:
+        return None
+
+    updated_at = started_at
+    if not updated_at:
+        updated_at = iso_utc(dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc))
+
+    return SessionRef(
+        id=session_id,
+        thread_name=path.name,
+        updated_at=updated_at,
+        path=path,
+        indexed=False,
+    )
+
+
+def session_file_paths_by_id() -> dict[str, Path]:
+    paths = [Path(p) for p in glob.glob(str(SESSIONS_DIR / "**" / "*.jsonl"), recursive=True)]
+    result: dict[str, Path] = {}
+    id_re = re.compile(r"([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})")
+    for path in paths:
+        match = id_re.search(path.name)
+        if match:
+            result[match.group(1)] = path
+    return result
+
+
+def session_files_by_id() -> dict[str, SessionRef]:
+    paths = [Path(p) for p in glob.glob(str(SESSIONS_DIR / "**" / "*.jsonl"), recursive=True)]
+    result: dict[str, SessionRef] = {}
+    for path in paths:
+        session = parse_session_file(path)
+        if not session:
+            continue
+        existing = result.get(session.id)
+        if existing is None or parse_time(session.updated_at) > parse_time(existing.updated_at):
+            result[session.id] = session
+    return result
+
+
+def is_already_processed(processed: dict[str, str], session_id: str, updated_at: str) -> bool:
+    stored = processed.get(session_id)
+    if not stored:
+        return False
+    if stored == updated_at:
+        return True
+    try:
+        return parse_time(stored) >= parse_time(updated_at)
+    except Exception:  # noqa: BLE001 - malformed legacy state should not crash selection.
+        return False
+
+
+def load_sessions(args: argparse.Namespace, state: dict[str, Any]) -> tuple[list[SessionRef], DiscoveryStats]:
+    if args.session_file:
+        path = Path(args.session_file).expanduser()
+        session = parse_session_file(path)
+        if not session:
+            raise SystemExit(f"Could not parse session metadata from {path}")
+        return (
+            [session],
+            DiscoveryStats(
+                indexed_rows=0,
+                indexed_missing_files=0,
+                file_only_recent_unprocessed=0,
+                selected_indexed=0,
+                selected_file_only=1,
+            ),
+        )
+
+    if not SESSION_INDEX.exists():
+        raise SystemExit(f"Missing session index: {SESSION_INDEX}")
+
+    file_sessions = session_files_by_id()
+    file_paths = session_file_paths_by_id()
+    rows = read_jsonl(SESSION_INDEX)
+    indexed_rows: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        sid = row.get("id")
+        updated_at = row.get("updated_at")
+        if not sid or not updated_at:
+            continue
+        indexed_rows[sid] = row
+
+    if args.lookback_days is not None:
+        cutoff = utc_now() - dt.timedelta(days=args.lookback_days)
+        file_only_cutoff = cutoff
+    elif state.get("last_successful_updated_at"):
+        cutoff = parse_time(state["last_successful_updated_at"])
+        file_only_cutoff = utc_now() - dt.timedelta(days=FILE_ONLY_BACKFILL_DAYS)
+    else:
+        cutoff = utc_now() - dt.timedelta(days=7)
+        file_only_cutoff = cutoff
+
+    processed = state.get("processed_sessions", {})
+    sessions: dict[str, SessionRef] = {}
+
+    for sid, file_session in file_sessions.items():
+        row = indexed_rows.get(sid)
+        if row:
+            updated_at = newer_timestamp(file_session.updated_at, str(row["updated_at"]))
+            thread_name = str(row.get("thread_name") or file_session.thread_name)
+            sessions[sid] = SessionRef(
+                id=sid,
+                thread_name=thread_name,
+                updated_at=updated_at,
+                path=file_session.path,
+                indexed=True,
+            )
+        else:
+            sessions[sid] = file_session
+
+    for sid, row in indexed_rows.items():
+        if sid in sessions:
+            continue
+        path = file_paths.get(sid, Path())
+        if not path.exists():
+            continue
+        sessions[sid] = SessionRef(
+            id=sid,
+            thread_name=str(row.get("thread_name") or path.name or "(untitled)"),
+            updated_at=str(row["updated_at"]),
+            path=path,
+            indexed=True,
+        )
+
+    selected: list[SessionRef] = []
+    file_only_recent_unprocessed = 0
+    for session in sessions.values():
+        if is_already_processed(processed, session.id, session.updated_at):
+            continue
+        updated_dt = parse_time(session.updated_at)
+        if session.indexed:
+            if updated_dt > cutoff:
+                selected.append(session)
+        else:
+            if updated_dt > file_only_cutoff:
+                file_only_recent_unprocessed += 1
+                selected.append(session)
+
+    selected.sort(key=lambda item: parse_time(item.updated_at), reverse=True)
+    if args.max_sessions is not None:
+        selected = selected[: args.max_sessions]
+    stats = DiscoveryStats(
+        indexed_rows=len(indexed_rows),
+        indexed_missing_files=sum(1 for sid in indexed_rows if sid not in file_paths),
+        file_only_recent_unprocessed=file_only_recent_unprocessed,
+        selected_indexed=sum(1 for session in selected if session.indexed),
+        selected_file_only=sum(1 for session in selected if not session.indexed),
+    )
+    return selected, stats
+
+
+def detect_approval_gate(skill_md: Path, memory_text: str) -> bool:
+    text = memory_text
+    if skill_md.exists():
+        text += "\n" + skill_md.read_text(encoding="utf-8", errors="replace")
+    return bool(re.search(r"(?i)explicit (user )?(acceptance|approval)", text))
+
+
+def derive_legacy_hints(skill: str, skill_md: Path, memory_text: str) -> tuple[str, ...]:
+    """Derive project-neutral fallback hints for non-governed local skills."""
+    source = skill.replace("-", " ").replace("_", " ")
+    if skill_md.exists():
+        source += "\n" + "\n".join(skill_md.read_text(encoding="utf-8", errors="replace").splitlines()[:40])
+    source += "\n" + "\n".join(memory_text.splitlines()[:40])
+    tokens = [
+        token
+        for token in re.findall(r"[a-z][a-z0-9]{3,}", source.lower())
+        if token not in STOP_WORDS
+        and token
+        not in {
+            "codex",
+            "skill",
+            "skills",
+            "memory",
+            "reference",
+            "references",
+            "governed",
+            "project",
+            "assistant",
+            "description",
+            "workflow",
+        }
+    ]
+    return dedupe_keep_order(tokens[:16])
+
+
+def extract_headings(text: str) -> tuple[str, ...]:
+    return tuple(match.group(1).strip() for match in re.finditer(r"^##\s+(.+?)\s*$", text, re.M))
+
+
+def governed_project_root(path: Path) -> Path | None:
+    candidate = path.expanduser().resolve()
+    for current in (candidate, *candidate.parents):
+        if (current / ".governed").is_dir():
+            return current
+    return None
+
+
+def load_governed_install_states() -> list[dict[str, Any]]:
+    states: list[dict[str, Any]] = []
+    if not INSTALL_STATE_DIR.exists():
+        return states
+    for path in sorted(INSTALL_STATE_DIR.glob("*.json")):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            log(f"Ignored invalid governed install state {path}")
+            continue
+        if isinstance(payload, dict):
+            states.append(payload)
+    return states
+
+
+def discover_memory_targets() -> dict[str, MemoryTarget]:
+    targets: dict[str, MemoryTarget] = {}
+    for skill_dir in sorted(p for p in SKILLS_DIR.glob("*") if p.is_dir()):
+        if (skill_dir / ".govkb-materialized.json").is_file():
+            continue
+        reference_dir = skill_dir / "references"
+        if not reference_dir.exists():
+            continue
+        memory_files = sorted(
+            [
+                path
+                for path in reference_dir.iterdir()
+                if path.is_file() and "memory" in path.name.lower() and path.suffix.lower() == ".md"
+            ]
+        )
+        if len(memory_files) != 1:
+            continue
+        memory_file = memory_files[0]
+        content = memory_file.read_text(encoding="utf-8", errors="replace")
+        skill_md = skill_dir / "SKILL.md"
+        targets[skill_dir.name] = MemoryTarget(
+            skill=skill_dir.name,
+            capability_id=skill_dir.name,
+            project_id=None,
+            path=memory_file,
+            requires_explicit_acceptance=detect_approval_gate(skill_md, content),
+            headings=extract_headings(content),
+            content=content,
+            aliases=(skill_dir.name, f"${skill_dir.name}"),
+            hints=derive_legacy_hints(skill_dir.name, skill_md, content),
+            negative_hints=(),
+            project_root=None,
+        )
+
+    for state in load_governed_install_states():
+        project_id = str(state.get("project_id") or "").strip() or None
+        project_root_value = state.get("project_root")
+        project_root = Path(project_root_value).expanduser().resolve() if isinstance(project_root_value, str) and project_root_value else None
+        for capability in state.get("capabilities", []):
+            if not isinstance(capability, dict):
+                continue
+            capability_id = str(capability.get("capability_id", "")).strip()
+            skill = str(capability.get("materialized_skill_id") or capability_id).strip()
+            memory_path_value = capability.get("memory_path")
+            if not skill or not capability_id or not isinstance(memory_path_value, str) or not memory_path_value:
+                continue
+            memory_path = Path(memory_path_value).expanduser()
+            if not memory_path.exists():
+                log(f"Governed memory target missing for {skill}: {memory_path}")
+                continue
+            content = memory_path.read_text(encoding="utf-8", errors="replace")
+            headings = tuple(capability.get("memory_sections") or ()) or extract_headings(content)
+            targets[skill] = MemoryTarget(
+                skill=skill,
+                capability_id=capability_id,
+                project_id=project_id,
+                path=memory_path,
+                requires_explicit_acceptance=bool(capability.get("requires_explicit_acceptance")),
+                headings=headings,
+                content=content,
+                aliases=dedupe_keep_order(
+                    [
+                        skill,
+                        f"${skill}",
+                        capability_id,
+                        f"${capability_id}",
+                        *[str(item).strip() for item in capability.get("aliases", []) if str(item).strip()],
+                    ]
+                ),
+                hints=tuple(str(item).strip().lower() for item in capability.get("hints", []) if str(item).strip()),
+                negative_hints=tuple(str(item).strip().lower() for item in capability.get("negative_hints", []) if str(item).strip()),
+                project_root=project_root,
+            )
+    return targets
+
+
+def redact_sensitive(text: str) -> str:
+    result = text
+    for pattern in SENSITIVE_PATTERNS:
+        result = pattern.sub("[REDACTED]", result)
+    return result
+
+
+def has_sensitive_content(text: str) -> bool:
+    return any(pattern.search(text) for pattern in SENSITIVE_PATTERNS)
+
+
+def compact_text(text: str, limit: int = 3500) -> str:
+    text = redact_sensitive(text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    if "## My request for Codex:" in text:
+        text = text.split("## My request for Codex:", 1)[1].strip()
+    if len(text) > limit:
+        return text[:limit] + "\n[TRUNCATED]"
+    return text
+
+
+def sanitize_session(session: SessionRef, limit: int = 45000) -> str:
+    rows = read_jsonl(session.path)
+    parts: list[str] = [
+        f"Session: {session.id}",
+        f"Thread: {session.thread_name}",
+        f"Updated: {session.updated_at}",
+    ]
+    for row in rows:
+        row_type = row.get("type")
+        payload = row.get("payload") or {}
+        timestamp = row.get("timestamp", "")
+        if not isinstance(payload, dict):
+            continue
+
+        if row_type == "session_meta":
+            meta = payload
+            cwd = meta.get("cwd")
+            source = meta.get("source")
+            if cwd or source:
+                parts.append(f"META {timestamp}: cwd={cwd} source={source}")
+            continue
+
+        payload_type = payload.get("type")
+        if row_type == "event_msg" and payload_type == "user_message":
+            message = compact_text(str(payload.get("message", "")))
+            if message:
+                parts.append(f"USER {timestamp}:\n{message}")
+        elif row_type == "event_msg" and payload_type == "agent_message":
+            phase = payload.get("phase", "")
+            message = compact_text(str(payload.get("message", "")), limit=1500)
+            if message:
+                parts.append(f"ASSISTANT {phase} {timestamp}:\n{message}")
+        elif row_type == "event_msg" and payload_type == "task_complete":
+            message = compact_text(str(payload.get("last_agent_message", "")), limit=5000)
+            if message:
+                parts.append(f"TASK COMPLETE {timestamp}:\n{message}")
+        elif row_type == "event_msg" and payload_type in {"patch_apply_end", "exec_command_end", "error"}:
+            summary = summarize_event_payload(payload)
+            if summary:
+                parts.append(f"EVENT {payload_type} {timestamp}: {summary}")
+        elif row_type == "compacted":
+            payload_text = compact_text(json.dumps(payload, ensure_ascii=False), limit=1500)
+            parts.append(f"CONTEXT COMPACTED {timestamp}: {payload_text}")
+
+    sanitized = "\n\n".join(parts)
+    if len(sanitized) > limit:
+        sanitized = sanitized[:limit] + "\n[SESSION TRUNCATED]"
+    return sanitized
+
+
+def session_project_root(session: SessionRef) -> Path | None:
+    rows = read_jsonl(session.path)
+    for row in rows:
+        if row.get("type") != "session_meta":
+            continue
+        payload = row.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        cwd = payload.get("cwd")
+        if isinstance(cwd, str) and cwd.strip():
+            return governed_project_root(Path(cwd))
+    return None
+
+
+def targets_for_session(session: SessionRef, targets: dict[str, MemoryTarget]) -> dict[str, MemoryTarget]:
+    project_root = session_project_root(session)
+    scoped: dict[str, MemoryTarget] = {}
+    for skill, target in targets.items():
+        if target.project_root is None:
+            scoped[skill] = target
+            continue
+        if project_root is not None and target.project_root == project_root:
+            scoped[skill] = target
+    return scoped
+
+
+def collect_session_signals(session: SessionRef, targets: dict[str, MemoryTarget]) -> SessionSignals:
+    rows = read_jsonl(session.path)
+    user_parts: list[str] = []
+    assistant_parts: list[str] = []
+    complete_parts: list[str] = []
+
+    for row in rows:
+        row_type = row.get("type")
+        payload = row.get("payload") or {}
+        if not isinstance(payload, dict):
+            continue
+        payload_type = payload.get("type")
+        if row_type == "event_msg" and payload_type == "user_message":
+            text = compact_text(str(payload.get("message", "")), limit=4000)
+            if text:
+                user_parts.append(text)
+        elif row_type == "event_msg" and payload_type == "agent_message":
+            text = compact_text(str(payload.get("message", "")), limit=1000)
+            if text:
+                assistant_parts.append(text)
+        elif row_type == "event_msg" and payload_type == "task_complete":
+            text = compact_text(str(payload.get("last_agent_message", "")), limit=6000)
+            if text:
+                complete_parts.append(text)
+
+    user_text = "\n".join(user_parts)
+    assistant_text = "\n".join(assistant_parts)
+    task_complete_text = "\n".join(complete_parts)
+    user_and_assistant = f"{user_text}\n{assistant_text}".lower()
+    combined = f"{user_text}\n{assistant_text}\n{task_complete_text}".lower()
+
+    explicit_skills = dedupe_keep_order(
+        [
+            target.skill
+            for target in targets.values()
+            if any(alias.lower() in user_and_assistant for alias in ((target.skill, f"${target.skill}") + target.aliases))
+        ]
+    )
+    hinted_skills = dedupe_keep_order(
+        [
+            target.skill
+            for target in targets.values()
+            if target.hints
+            and any(hint in combined for hint in target.hints)
+            and not any(negative in combined for negative in target.negative_hints)
+        ]
+    )
+    generic_relevance = any(pattern.search(combined) for pattern in GENERIC_RELEVANCE_PATTERNS)
+    self_referential = any(pattern.search(user_text) for pattern in SELF_REFERENTIAL_PATTERNS)
+
+    return SessionSignals(
+        user_text=user_text,
+        assistant_text=assistant_text,
+        task_complete_text=task_complete_text,
+        explicit_skills=explicit_skills,
+        hinted_skills=hinted_skills,
+        generic_relevance=generic_relevance,
+        self_referential=self_referential,
+    )
+
+
+def prescreen_session(session: SessionRef, signals: SessionSignals) -> tuple[bool, str]:
+    if signals.self_referential:
+        return False, "self-referential maintenance session"
+    if signals.explicit_skills or signals.hinted_skills:
+        return True, "explicit or hinted skill match"
+    if signals.generic_relevance:
+        return True, "generic durable-signal match"
+    return False, "no clear durable-skill signal"
+
+
+def prompt_targets_for_session(
+    targets: dict[str, MemoryTarget], signals: SessionSignals
+) -> dict[str, MemoryTarget]:
+    likely = dedupe_keep_order(list(signals.explicit_skills) + list(signals.hinted_skills))
+    if not likely:
+        return targets
+    return {skill: targets[skill] for skill in likely if skill in targets}
+
+
+def should_stage_capability_candidate(signals: SessionSignals) -> bool:
+    """Return true when a durable session has no specialized governed capability match."""
+    if signals.self_referential or not signals.generic_relevance:
+        return False
+    likely = dedupe_keep_order(list(signals.explicit_skills) + list(signals.hinted_skills))
+    specialized = [skill for skill in likely if not is_project_steward_skill(skill)]
+    return not specialized
+
+
+def is_project_steward_skill(skill: str) -> bool:
+    return skill == "project-knowledge-steward" or skill.endswith("-project-knowledge-steward")
+
+
+def summarize_event_payload(payload: dict[str, Any]) -> str:
+    payload_type = payload.get("type")
+    if payload_type == "exec_command_end":
+        command = " ".join(str(part) for part in payload.get("command", []))
+        exit_code = payload.get("exit_code")
+        return redact_sensitive(f"exit={exit_code} command={command}")[:1200]
+    if payload_type == "patch_apply_end":
+        return f"success={payload.get('success')} files={payload.get('files')}"
+    if payload_type == "error":
+        return compact_text(str(payload.get("message", payload)), limit=1000)
+    return ""
+
+
+def schema_text() -> str:
+    schema = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["session_id", "candidates"],
+        "properties": {
+            "session_id": {"type": "string"},
+            "candidates": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "target_skill",
+                        "memory_section",
+                        "lesson",
+                        "confidence",
+                        "durability",
+                        "bucket",
+                        "evidence",
+                        "reason",
+                        "explicit_acceptance",
+                        "sensitivity",
+                    ],
+                    "properties": {
+                        "target_skill": {"type": "string"},
+                        "memory_section": {"type": "string"},
+                        "lesson": {"type": "string"},
+                        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                        "durability": {"type": "string", "enum": ["high", "medium", "low"]},
+                        "bucket": {"type": "string", "enum": ["auto_apply", "stage", "reject"]},
+                        "evidence": {"type": "string"},
+                        "reason": {"type": "string"},
+                        "explicit_acceptance": {"type": "boolean"},
+                        "sensitivity": {"type": "string", "enum": ["clean", "sensitive", "unknown"]},
+                    },
+                },
+            },
+        },
+    }
+    return json.dumps(schema, indent=2)
+
+
+def prompt_for_session(session: SessionRef, targets: dict[str, MemoryTarget], sanitized: str) -> str:
+    target_lines = []
+    for target in targets.values():
+        gate = "requires explicit acceptance" if target.requires_explicit_acceptance else "auto-eligible if strict gates pass"
+        headings = ", ".join(target.headings) if target.headings else "(no ## headings; stage only)"
+        target_lines.append(f"- {target.skill}: {target.path}; {gate}; valid sections: {headings}")
+
+    memory_digest = []
+    for target in targets.values():
+        excerpt = "\n".join(target.content.splitlines()[:120])
+        memory_digest.append(f"### {target.skill}\n{excerpt}")
+
+    return f"""You classify whether a Codex session produced durable long-term memory updates for existing Codex skills.
+
+Return only JSON matching the provided schema.
+
+Strict policy:
+- Only propose durable, reusable workflow lessons that should change future behavior of a skill.
+- Do not preserve task summaries, ticket state, raw transcript details, credentials, tokens, secrets, or one-off facts.
+- Reject memory-review maintenance chatter, report inspection chatter, cron/scheduler discussion, and local workspace-layout lessons.
+- Reject assistant runtime facts such as sandbox mode, read-only filesystem failures, temp/cache write failures, local CLI invocation quirks, and tool permission artifacts unless the target capability is explicitly about that runtime.
+- Use bucket=auto_apply only when the target skill is exact, the section is one of the valid sections, the lesson is reusable, and confidence is at least 0.85.
+- Use bucket=stage for useful but ambiguous lessons, duplicate-adjacent lessons, or approval-gated lessons without explicit acceptance.
+- Use bucket=reject for noise, one-off details, sensitive content, or lessons already covered by existing memory.
+- If a skill requires explicit acceptance, auto_apply only when the session explicitly includes user acceptance of that memory/estimate lesson.
+- Phrase each lesson as one concise bullet-ready operational rule. Do not include markdown bullet markers.
+
+Available memory targets:
+{chr(10).join(target_lines)}
+
+Existing memory digest:
+{chr(10).join(memory_digest)}
+
+Session to classify:
+{sanitized}
+"""
+
+
+def find_codex() -> str:
+    configured = os.environ.get("CODEX_EXECUTABLE")
+    if configured:
+        configured_path = Path(configured).expanduser()
+        if configured_path.exists() or shutil.which(configured):
+            return str(configured_path if configured_path.exists() else configured)
+
+    resolved = shutil.which("codex")
+    if resolved:
+        return resolved
+
+    home = Path.home()
+    candidates = sorted(home.glob(".nvm/versions/node/*/bin/codex"), reverse=True)
+    candidates.append(home / ".local" / "bin" / "codex")
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+    return "codex"
+
+
+def extract_json_object(text: str) -> dict[str, Any]:
+    text = text.strip()
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.S)
+        if not match:
+            raise
+        return json.loads(match.group(0))
+
+
+def classify_session(
+    session: SessionRef,
+    targets: dict[str, MemoryTarget],
+    sanitized: str,
+    timeout: int,
+) -> dict[str, Any]:
+    codex = find_codex()
+    if not Path(codex).exists() and shutil.which(codex) is None:
+        raise RuntimeError(f"codex executable not found: {codex}")
+
+    with tempfile.TemporaryDirectory(prefix="codex-memory-review-") as tmpdir:
+        schema_path = Path(tmpdir) / "schema.json"
+        output_path = Path(tmpdir) / "output.json"
+        schema_path.write_text(schema_text(), encoding="utf-8")
+        cmd = [
+            codex,
+            "exec",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--cd",
+            str(CODEX_HOME),
+            "--output-schema",
+            str(schema_path),
+            "-o",
+            str(output_path),
+            prompt_for_session(session, targets, sanitized),
+        ]
+        env = os.environ.copy()
+        codex_parent = str(Path(codex).expanduser().parent)
+        if codex_parent and codex_parent != ".":
+            env["PATH"] = f"{codex_parent}:{env.get('PATH', '')}"
+        proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout, env=env)
+        if proc.returncode != 0:
+            raise RuntimeError(f"codex exec failed with exit {proc.returncode}: {proc.stderr[-2000:]}")
+        output = output_path.read_text(encoding="utf-8", errors="replace") if output_path.exists() else proc.stdout
+        parsed = extract_json_object(output)
+        if parsed.get("session_id") != session.id:
+            parsed["session_id"] = session.id
+        return parsed
+
+
+def words(text: str) -> set[str]:
+    return {
+        word
+        for word in re.findall(r"[a-z0-9]+", text.lower())
+        if len(word) > 2 and word not in STOP_WORDS
+    }
+
+
+def duplicate_reason(lesson: str, content: str) -> str | None:
+    lesson_norm = re.sub(r"\s+", " ", lesson.strip().lower())
+    if not lesson_norm:
+        return "empty lesson"
+    if lesson_norm in content.lower():
+        return "lesson text already appears in memory"
+    lesson_words = words(lesson)
+    if len(lesson_words) < 5:
+        return "lesson is too short to be useful"
+    for line in content.splitlines():
+        if not line.strip().startswith("-"):
+            continue
+        existing = line.strip("- ").strip()
+        existing_words = words(existing)
+        if not existing_words:
+            continue
+        overlap = len(lesson_words & existing_words) / max(len(lesson_words), 1)
+        ratio = difflib.SequenceMatcher(None, lesson_norm, existing.lower()).ratio()
+        if overlap >= 0.72 or ratio >= 0.84:
+            return f"similar to existing memory: {existing[:180]}"
+    return None
+
+
+def environment_local_reason(lesson: str, evidence: str) -> str | None:
+    combined = f"{lesson}\n{evidence}"
+    for pattern, reason in ENVIRONMENT_LOCAL_PATTERNS:
+        if pattern.search(combined):
+            return reason
+    return None
+
+
+def validate_candidate(candidate: dict[str, Any], targets: dict[str, MemoryTarget]) -> tuple[str, str]:
+    target_skill = str(candidate.get("target_skill", "")).strip()
+    target = targets.get(target_skill)
+    if not target:
+        return "reject", f"unknown target skill: {target_skill}"
+
+    lesson = normalize_lesson(str(candidate.get("lesson", "")))
+    if lesson != candidate.get("lesson"):
+        candidate["lesson"] = lesson
+    if not lesson:
+        return "reject", "empty lesson"
+    if has_sensitive_content(lesson) or str(candidate.get("sensitivity")) != "clean":
+        return "reject", "candidate includes or may include sensitive content"
+    environment_local = environment_local_reason(lesson, str(candidate.get("evidence", "")))
+    if environment_local:
+        return "reject", environment_local
+    if len(lesson) > 450:
+        return "stage", "lesson is too long for direct memory insertion"
+
+    section = str(candidate.get("memory_section", "")).strip()
+    if section not in target.headings:
+        return "stage", f"memory section is not an existing heading for {target_skill}"
+
+    duplicate = duplicate_reason(lesson, target.content)
+    if duplicate:
+        return "reject", duplicate
+
+    confidence = float(candidate.get("confidence", 0) or 0)
+    durability = candidate.get("durability")
+    explicit_acceptance = bool(candidate.get("explicit_acceptance"))
+    requested_bucket = candidate.get("bucket")
+
+    if target.requires_explicit_acceptance and not explicit_acceptance:
+        return "stage", "target skill requires explicit acceptance"
+    if confidence < MIN_AUTO_CONFIDENCE:
+        return "stage", f"confidence {confidence:.2f} is below {MIN_AUTO_CONFIDENCE:.2f}"
+    if durability != "high":
+        return "stage", f"durability is {durability}"
+    if requested_bucket != "auto_apply":
+        return str(requested_bucket or "stage"), "classifier did not request auto-apply"
+    return "auto_apply", "strict gates passed"
+
+
+def normalize_lesson(lesson: str) -> str:
+    lesson = redact_sensitive(lesson)
+    lesson = re.sub(r"^\s*[-*]\s+", "", lesson.strip())
+    lesson = re.sub(r"\s+", " ", lesson)
+    return lesson
+
+
+def insert_lesson(content: str, section: str, lesson: str) -> str:
+    lines = content.splitlines()
+    heading = f"## {section}"
+    start = None
+    for idx, line in enumerate(lines):
+        if line.strip() == heading:
+            start = idx
+            break
+    if start is None:
+        raise ValueError(f"section not found: {section}")
+
+    end = len(lines)
+    for idx in range(start + 1, len(lines)):
+        if lines[idx].startswith("## "):
+            end = idx
+            break
+
+    insert_at = end
+    while insert_at > start + 1 and lines[insert_at - 1].strip() == "":
+        insert_at -= 1
+    new_lines = lines[:insert_at] + [f"- {lesson}"] + lines[insert_at:]
+    return "\n".join(new_lines).rstrip() + "\n"
+
+
+def unified_diff(path: Path, before: str, after: str) -> str:
+    if before == after:
+        return ""
+    return "".join(
+        difflib.unified_diff(
+            before.splitlines(keepends=True),
+            after.splitlines(keepends=True),
+            fromfile=str(path),
+            tofile=str(path),
+        )
+    )
+
+
+def write_report(
+    run_id: str,
+    discovery: DiscoveryStats,
+    sessions: list[SessionRef],
+    skipped: list[dict[str, Any]],
+    applied: list[dict[str, Any]],
+    staged: list[dict[str, Any]],
+    candidate_stage_requests: list[dict[str, Any]],
+    candidate_auto_create_results: list[dict[str, Any]],
+    rejected: list[dict[str, Any]],
+    failed: list[dict[str, str]],
+    dry_run: bool,
+) -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    report_path = REPORT_DIR / f"{run_id}-report.md"
+    run_date = run_id[:10]
+    lines = [
+        f"# Codex Memory Review - {run_date}",
+        "",
+        f"- Mode: {'dry-run' if dry_run else 'apply'}",
+        f"- Sessions processed: {len(sessions)}",
+        f"- Skipped before classification: {len(skipped)}",
+        f"- Applied: {len(applied)}",
+        f"- Staged: {len(staged)}",
+        f"- Capability candidates: {len(candidate_stage_requests)}",
+        f"- Rejected: {len(rejected)}",
+        f"- Failed sessions: {len(failed)}",
+        "",
+        "## Discovery Health",
+        f"- Indexed rows seen: {discovery.indexed_rows}",
+        f"- Indexed rows missing session file: {discovery.indexed_missing_files}",
+        f"- File-only recent unprocessed sessions detected: {discovery.file_only_recent_unprocessed}",
+        f"- Selected from indexed path: {discovery.selected_indexed}",
+        f"- Selected from file-only path: {discovery.selected_file_only}",
+        "",
+        "## Sessions",
+    ]
+    if sessions:
+        for session in sessions:
+            lines.append(f"- `{session.id}` | {session.updated_at} | {session.thread_name}")
+    else:
+        lines.append("- None")
+
+    def add_section(title: str, rows: list[dict[str, Any]]) -> None:
+        lines.extend(["", f"## {title}"])
+        if not rows:
+            lines.append("- None")
+            return
+        for row in rows:
+            lines.append(
+                f"- `{row.get('target_skill')}` / `{row.get('memory_section')}` "
+                f"from `{row.get('session_id')}`: {row.get('lesson')} "
+                f"(confidence={float(row.get('confidence', 0) or 0):.2f}; {row.get('validation_reason')})"
+            )
+            evidence = str(row.get("evidence", "")).strip()
+            if evidence:
+                lines.append(f"  Evidence: {evidence[:300]}")
+
+    lines.extend(["", "## Skipped Before Classification"])
+    if skipped:
+        for row in skipped:
+            lines.append(
+                f"- `{row['session_id']}` | {row['reason']} | indexed={row['indexed']} | {row['thread_name']}"
+            )
+            if row.get("likely_skills"):
+                lines.append(f"  Likely skills: {', '.join(row['likely_skills'])}")
+    else:
+        lines.append("- None")
+
+    add_section("Applied" if not dry_run else "Would Apply", applied)
+    add_section("Staged", staged)
+
+    lines.extend(["", "## Capability Candidate Stage Requests"])
+    if candidate_stage_requests:
+        for row in candidate_stage_requests:
+            lines.append(
+                f"- `{row['session_id']}` | {row['reason']} | project={row['project_root']} | "
+                f"session={row['session_file']}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Capability Auto-Create"])
+    if candidate_auto_create_results:
+        for row in candidate_auto_create_results:
+            lines.append(
+                f"- project={row['project_root']} | status={row['status']}"
+            )
+            for detail in row.get("details", []):
+                lines.append(f"  {detail}")
+    else:
+        lines.append("- None")
+
+    add_section("Rejected", rejected[:25])
+
+    lines.append("")
+    lines.append("## Failed Sessions")
+    if failed:
+        for row in failed:
+            lines.append(f"- `{row['session_id']}`: {row['error']}")
+    else:
+        lines.append("- None")
+
+    report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    log(f"Wrote report {report_path}")
+
+
+def write_patch(run_id: str, name: str, diffs: list[str]) -> None:
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    path = REPORT_DIR / f"{run_id}-{name}.patch"
+    text = "\n".join(diff for diff in diffs if diff).strip()
+    path.write_text((text + "\n") if text else "", encoding="utf-8")
+    log(f"Wrote patch {path}")
+
+
+def run_auto_promote(project_roots: set[Path]) -> int:
+    failures = 0
+    for project_root in sorted(project_roots):
+        govkb_dir = project_root / "govkb"
+        cwd = govkb_dir if govkb_dir.is_dir() else project_root
+        cmd = [
+            sys.executable,
+            "-m",
+            "govkb.cli",
+            "promote",
+            str(project_root),
+            "--assistant",
+            "codex",
+            "--codex-home",
+            str(CODEX_HOME),
+            "--auto",
+        ]
+        env = govkb_subprocess_env(project_root)
+        log(f"Auto-promoting governed memory changes for {project_root}")
+        proc = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, check=False, timeout=120)
+        if proc.stdout.strip():
+            for line in proc.stdout.strip().splitlines():
+                log(f"govkb promote: {line}")
+        if proc.stderr.strip():
+            for line in proc.stderr.strip().splitlines():
+                log(f"govkb promote stderr: {line}")
+        if proc.returncode != 0:
+            failures += 1
+            log(f"Auto-promote failed for {project_root} with exit code {proc.returncode}")
+    return failures
+
+
+def run_candidate_staging(requests: list[dict[str, Any]]) -> int:
+    failures = 0
+    for request in requests:
+        project_root = Path(str(request["project_root"])).expanduser().resolve()
+        session_file = Path(str(request["session_file"])).expanduser().resolve()
+        govkb_dir = project_root / "govkb"
+        cwd = govkb_dir if govkb_dir.is_dir() else project_root
+        cmd = [
+            sys.executable,
+            "-m",
+            "govkb.cli",
+            "candidates",
+            "stage",
+            "--project-root",
+            str(project_root),
+            "--assistant",
+            "codex",
+            "--session-file",
+            str(session_file),
+        ]
+        env = govkb_subprocess_env(project_root)
+        log(f"Staging governed capability candidate for session {request['session_id']} in {project_root}")
+        proc = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, check=False, timeout=120)
+        if proc.stdout.strip():
+            for line in proc.stdout.strip().splitlines():
+                log(f"govkb candidates stage: {line}")
+        if proc.stderr.strip():
+            for line in proc.stderr.strip().splitlines():
+                log(f"govkb candidates stderr: {line}")
+        if proc.returncode != 0:
+            failures += 1
+            log(f"Candidate staging failed for {session_file} with exit code {proc.returncode}")
+    return failures
+
+
+def run_candidate_auto_create(project_roots: set[Path]) -> tuple[int, list[dict[str, Any]]]:
+    failures = 0
+    results: list[dict[str, Any]] = []
+    for project_root in sorted(project_roots):
+        govkb_dir = project_root / "govkb"
+        cwd = govkb_dir if govkb_dir.is_dir() else project_root
+        cmd = [
+            sys.executable,
+            "-m",
+            "govkb.cli",
+            "candidates",
+            "auto-create-ready",
+            "--project-root",
+            str(project_root),
+            "--assistant",
+            "codex",
+            "--codex-home",
+            str(CODEX_HOME),
+        ]
+        env = govkb_subprocess_env(project_root)
+        log(f"Auto-creating governed capabilities for {project_root}")
+        proc = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, check=False, timeout=180)
+        stdout_lines = [line for line in proc.stdout.strip().splitlines() if line.strip()]
+        if proc.stdout.strip():
+            for line in stdout_lines:
+                log(f"govkb candidates auto-create-ready: {line}")
+        if proc.stderr.strip():
+            for line in proc.stderr.strip().splitlines():
+                log(f"govkb candidates auto-create-ready stderr: {line}")
+        if proc.returncode != 0:
+            failures += 1
+            log(f"Auto-create failed for {project_root} with exit code {proc.returncode}")
+        results.append(
+            {
+                "project_root": str(project_root),
+                "status": "failed" if proc.returncode != 0 else "completed",
+                "details": stdout_lines,
+            }
+        )
+    return failures, results
+
+
+def process(args: argparse.Namespace) -> int:
+    STATE_DIR.mkdir(parents=True, exist_ok=True)
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    state = load_state()
+    sessions, discovery = load_sessions(args, state)
+    scoped_project_root = getattr(args, "resolved_project_root", None)
+    if scoped_project_root is not None:
+        sessions = [session for session in sessions if session_project_root(session) == scoped_project_root]
+        discovery = DiscoveryStats(
+            indexed_rows=discovery.indexed_rows,
+            indexed_missing_files=discovery.indexed_missing_files,
+            file_only_recent_unprocessed=discovery.file_only_recent_unprocessed,
+            selected_indexed=sum(1 for session in sessions if session.indexed),
+            selected_file_only=sum(1 for session in sessions if not session.indexed),
+        )
+    targets = discover_memory_targets()
+    if not targets:
+        raise SystemExit(f"No skill memory targets found under {SKILLS_DIR}")
+
+    log(
+        f"Selected {len(sessions)} session(s); discovered {len(targets)} memory target(s); "
+        f"file_only_recent={discovery.file_only_recent_unprocessed}; indexed_missing_files={discovery.indexed_missing_files}"
+    )
+
+    skipped: list[dict[str, Any]] = []
+    applied: list[dict[str, Any]] = []
+    staged: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    failed: list[dict[str, str]] = []
+    processed_successfully: list[SessionRef] = []
+    auto_promote_project_roots: set[Path] = set()
+    candidate_auto_create_project_roots: set[Path] = set()
+    candidate_stage_requests: dict[tuple[str, str], dict[str, Any]] = {}
+    if scoped_project_root is not None:
+        candidate_auto_create_project_roots.add(scoped_project_root)
+
+    original_content = {target.path: target.content for target in targets.values()}
+    after_auto = dict(original_content)
+    after_staged: dict[Path, str] | None = None
+    candidate_auto_create_results: list[dict[str, Any]] = []
+
+    for session in sessions:
+        try:
+            project_root = session_project_root(session)
+            if project_root is not None:
+                candidate_auto_create_project_roots.add(project_root)
+            session_targets = targets_for_session(session, targets)
+            signals = collect_session_signals(session, session_targets)
+            should_classify, prescreen_reason = prescreen_session(session, signals)
+            if not should_classify:
+                skipped.append(
+                    {
+                        "session_id": session.id,
+                        "thread_name": session.thread_name,
+                        "indexed": session.indexed,
+                        "reason": prescreen_reason,
+                        "likely_skills": dedupe_keep_order(list(signals.explicit_skills) + list(signals.hinted_skills)),
+                    }
+                )
+                processed_successfully.append(session)
+                log(f"Skipped session {session.id}: {prescreen_reason}")
+                continue
+
+            if should_stage_capability_candidate(signals):
+                project_root = session_project_root(session)
+                if project_root is not None:
+                    key = (str(project_root), str(session.path))
+                    candidate_stage_requests[key] = {
+                        "session_id": session.id,
+                        "thread_name": session.thread_name,
+                        "project_root": str(project_root),
+                        "session_file": str(session.path),
+                        "reason": "durable session did not match a specialized governed capability",
+                    }
+
+            prompt_targets = prompt_targets_for_session(session_targets, signals)
+            sanitized = sanitize_session(session)
+            if args.verbose:
+                sample_path = LOG_DIR / f"{utc_now().strftime('%Y%m%d%H%M%S')}-{session.id}-sanitized.txt"
+                sample_path.write_text(sanitized, encoding="utf-8")
+                log(f"Wrote sanitized session sample {sample_path}")
+            log(
+                f"Classifying session {session.id} with {len(prompt_targets)} prompt target(s): "
+                f"{', '.join(prompt_targets)}"
+            )
+            result = classify_session(session, prompt_targets, sanitized, args.codex_timeout)
+            candidates = result.get("candidates", [])
+            if not isinstance(candidates, list):
+                raise RuntimeError("classifier returned non-list candidates")
+            for candidate in candidates:
+                if not isinstance(candidate, dict):
+                    continue
+                candidate["session_id"] = session.id
+                bucket, reason = validate_candidate(candidate, targets)
+                candidate["validation_reason"] = reason
+                target = targets.get(str(candidate.get("target_skill", "")).strip())
+                if bucket == "auto_apply" and target:
+                    current = after_auto[target.path]
+                    updated = insert_lesson(current, str(candidate["memory_section"]).strip(), candidate["lesson"])
+                    after_auto[target.path] = updated
+                    if target.project_root is not None:
+                        auto_promote_project_roots.add(target.project_root)
+                    targets[target.skill] = MemoryTarget(
+                        skill=target.skill,
+                        capability_id=target.capability_id,
+                        project_id=target.project_id,
+                        path=target.path,
+                        requires_explicit_acceptance=target.requires_explicit_acceptance,
+                        headings=target.headings,
+                        content=updated,
+                        aliases=target.aliases,
+                        hints=target.hints,
+                        negative_hints=target.negative_hints,
+                        project_root=target.project_root,
+                    )
+                    applied.append(candidate)
+                elif bucket == "stage":
+                    staged.append(candidate)
+                else:
+                    rejected.append(candidate)
+            processed_successfully.append(session)
+        except Exception as exc:  # noqa: BLE001 - per-session failure must be reported, not hide the run.
+            failed.append({"session_id": session.id, "error": str(exc)})
+            log(f"Failed session {session.id}: {exc}")
+
+    after_staged = dict(after_auto)
+    for candidate in staged:
+        target = targets.get(str(candidate.get("target_skill", "")).strip())
+        if not target:
+            continue
+        section = str(candidate.get("memory_section", "")).strip()
+        if section not in target.headings:
+            continue
+        try:
+            after_staged[target.path] = insert_lesson(after_staged[target.path], section, candidate["lesson"])
+        except Exception:
+            continue
+
+    applied_diffs = [unified_diff(path, original_content[path], after_auto[path]) for path in original_content]
+    staged_diffs = [unified_diff(path, after_auto[path], after_staged[path]) for path in original_content]
+    run_id = utc_now().strftime("%Y-%m-%dT%H%M%SZ")
+
+    write_patch(run_id, "applied", applied_diffs)
+    write_patch(run_id, "staged", staged_diffs)
+    candidate_stage_rows = list(candidate_stage_requests.values())
+    write_report(
+        run_id,
+        discovery,
+        sessions,
+        skipped,
+        applied,
+        staged,
+        candidate_stage_rows,
+        candidate_auto_create_results,
+        rejected,
+        failed,
+        args.dry_run,
+    )
+
+    if not args.dry_run:
+        for path, content in after_auto.items():
+            if content != original_content[path]:
+                path.write_text(content, encoding="utf-8")
+                log(f"Updated memory file {path}")
+
+        candidate_stage_failures = run_candidate_staging(candidate_stage_rows) if candidate_stage_rows else 0
+        if candidate_stage_failures:
+            return 1
+        if candidate_auto_create_project_roots:
+            auto_create_failures, candidate_auto_create_results = run_candidate_auto_create(candidate_auto_create_project_roots)
+            write_report(
+                run_id,
+                discovery,
+                sessions,
+                skipped,
+                applied,
+                staged,
+                candidate_stage_rows,
+                candidate_auto_create_results,
+                rejected,
+                failed,
+                args.dry_run,
+            )
+            if auto_create_failures:
+                return 1
+
+        if not failed:
+            processed = state.setdefault("processed_sessions", {})
+            for session in processed_successfully:
+                processed[session.id] = session.updated_at
+            if processed_successfully:
+                latest = max(parse_time(session.updated_at) for session in processed_successfully)
+                previous = state.get("last_successful_updated_at")
+                if previous:
+                    latest = max(latest, parse_time(previous))
+                state["last_successful_updated_at"] = iso_utc(latest)
+            state["last_run_at"] = iso_utc(utc_now())
+            save_state(state)
+            log(f"Updated state {STATE_FILE}")
+            if getattr(args, "auto_promote", True) and auto_promote_project_roots:
+                promote_failures = run_auto_promote(auto_promote_project_roots)
+                if promote_failures:
+                    return 1
+        else:
+            log("Skipped state advancement because one or more sessions failed")
+
+    return 1 if failed else 0
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Review recent Codex sessions for skill memory updates.")
+    parser.add_argument("--dry-run", action="store_true", help="Generate reports and patches without editing memory.")
+    parser.add_argument("--once", action="store_true", help="Run once; accepted for cron readability.")
+    parser.add_argument("--lookback-days", type=float, default=None, help="Override incremental selection window.")
+    parser.add_argument("--max-sessions", type=int, default=20, help="Maximum sessions to classify in one run.")
+    parser.add_argument("--verbose", action="store_true", help="Write sanitized classifier inputs to the log dir.")
+    parser.add_argument("--codex-timeout", type=int, default=900, help="Per-session codex exec timeout in seconds.")
+    parser.add_argument("--session-file", help="Classify one explicit session JSONL file.")
+    parser.add_argument("--project-root", help="Limit review state, reports, and session selection to one governed project.")
+    parser.add_argument(
+        "--no-auto-promote",
+        dest="auto_promote",
+        action="store_false",
+        help="Do not promote safe governed memory changes back into the repo after apply.",
+    )
+    parser.set_defaults(auto_promote=True)
+    return parser
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    args.resolved_project_root = configure_review_scope(args.project_root)
+    with acquire_lock():
+        return process(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

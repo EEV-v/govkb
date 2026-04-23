@@ -1,0 +1,15 @@
+schema_version = 1
+
+[project]
+id = "__PROJECT_ID__"
+name = "__PROJECT_NAME__"
+
+[release]
+current = "unreleased"
+
+[adapters]
+enabled = ["codex"]
+
+[automation]
+auto_create_capabilities = true
+auto_create_min_occurrences = 2

@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "govkb"
+version = "0.1.0"
+description = "Governed knowledge tooling for repo-native AI capability packages."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.scripts]
+govkb = "govkb.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+govkb = [
+  "templates/project/.governed/project.toml",
+  "templates/project/.governed/capabilities/README.md",
+  "templates/project/.governed/capabilities/project-knowledge-steward/capability.contract.toml",
+  "templates/project/.governed/capabilities/project-knowledge-steward/instructions.md",
+  "templates/project/.governed/capabilities/project-knowledge-steward/references/long-term-memory.md",
+  "templates/project/.governed/adapters/codex/adapter.toml",
+  "templates/project/.governed/knowledge/README.md",
+  "templates/project/.governed/releases/README.md",
+  "templates/project/.governed/candidates/README.md",
+  "adapters/codex/bin/codex-memory-review",
+]
