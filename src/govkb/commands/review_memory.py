@@ -44,6 +44,12 @@ def run_review_memory(args) -> int:
         cmd.append("--verbose")
     if getattr(args, "codex_timeout", None) is not None:
         cmd.extend(["--codex-timeout", str(args.codex_timeout)])
+    if getattr(args, "classifier_codex_home", None):
+        cmd.extend(["--classifier-codex-home", str(Path(args.classifier_codex_home).expanduser())])
+    if getattr(args, "codex_model", None):
+        cmd.extend(["--codex-model", str(args.codex_model)])
+    if getattr(args, "codex_reasoning", None):
+        cmd.extend(["--codex-reasoning", str(args.codex_reasoning)])
     if getattr(args, "session_file", None):
         cmd.extend(["--session-file", str(Path(args.session_file).expanduser())])
     if not getattr(args, "auto_promote", True):

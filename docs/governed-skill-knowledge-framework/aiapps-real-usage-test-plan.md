@@ -75,7 +75,7 @@ Rule:
 ## 4. Review-memory dry run
 
 - run:
-  - `python3 -m govkb.cli review-memory --assistant codex --project-root /home/ev/code/AIApps --dry-run --lookback-days 2`
+  - `python3 -m govkb.cli review-memory --assistant codex --project-root /home/ev/code/AIApps --dry-run --lookback-days 2 --max-sessions 1 --classifier-codex-home ~/.codex --codex-model gpt-5.4-mini --codex-reasoning low --codex-timeout 180`
 
 Check:
 
@@ -89,6 +89,7 @@ Check:
 ## 5. Review-memory apply
 
 - run same without `--dry-run`
+- keep the same quota-safe classifier flags unless a documented diagnostic rerun requires a stronger model or higher reasoning
 
 Pass if:
 

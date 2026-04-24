@@ -431,9 +431,15 @@ sessions = ["backend-workflow"]
                 / "candidate-facts.toml"
             ).read_text(encoding="utf-8")
             self.assertIn('section = "Code And Docs Map"', facts_text)
+            self.assertIn("before treating the workflow as complete", facts_text)
             self.assertIn('repo_paths = ["docs/release/signoff.md"]', facts_text)
+            self.assertIn("durable release signoff workflow documentation", facts_text)
             self.assertIn('section = "Commands And Verification"', facts_text)
             self.assertIn("python3 -m unittest discover -s tests -v", facts_text)
+            self.assertIn("release signoff workflow verification command", facts_text)
+            self.assertNotIn("Stable release signoff workflow steps proven across sessions", facts_text)
+            self.assertNotIn("Stable commands or conventions", facts_text)
+            self.assertNotIn("for this candidate", facts_text)
             self.assertNotIn("Подготовь", facts_text)
 
     def test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist(self) -> None:

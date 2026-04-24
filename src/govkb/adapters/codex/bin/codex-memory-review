@@ -69,6 +69,41 @@ TRANSIENT_CONNECTIVITY_PATTERNS = [
     re.compile(r"(?i)\btemporarily unavailable\b"),
 ]
 
+SUCCESSFUL_OUTCOME_PATTERNS = [
+    re.compile(r"(?i)\bpassed\b"),
+    re.compile(r"(?i)\bvalidated\b"),
+    re.compile(r"(?i)\bsucceeded\b"),
+    re.compile(r"(?i)\bcompleted\b"),
+    re.compile(r"(?i)\bgreen\b"),
+]
+
+COMMAND_PREFIXES = {
+    "./",
+    "bun",
+    "cargo",
+    "dotnet",
+    "go",
+    "gradle",
+    "make",
+    "mvn",
+    "npm",
+    "npx",
+    "pnpm",
+    "pytest",
+    "python",
+    "python3",
+    "uv",
+    "yarn",
+}
+
+CLASSIFIER_ENVIRONMENT_PATTERNS = [
+    re.compile(r"(?i)\boperation not permitted \(os error 1\)"),
+    re.compile(r"(?i)\bcould not resolve host\b"),
+    re.compile(r"(?i)\btemporary failure in name resolution\b"),
+    re.compile(r"(?i)\bfailed to initialize session: read-only file system\b"),
+    re.compile(r"(?i)\berror creating thread\b.*\bread-only file system\b"),
+]
+
 
 SENSITIVE_PATTERNS = [
     re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}"),
@@ -172,6 +207,10 @@ class UsageLimitClassificationError(RetryableClassificationError):
 
 class ConnectivityClassificationError(RetryableClassificationError):
     """Classifier failed because the nested Codex transport is unavailable."""
+
+
+class ClassifierEnvironmentError(RetryableClassificationError):
+    """Classifier failed because the execution environment blocks nested Codex."""
 
 
 class TimeoutClassificationError(RetryableClassificationError):
@@ -715,6 +754,14 @@ def compact_text(text: str, limit: int = 3500) -> str:
     return text
 
 
+def payload_text(payload: dict[str, Any], *keys: str) -> str:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
+
+
 def sanitize_session(session: SessionRef, limit: int = 45000) -> str:
     rows = read_jsonl(session.path)
     parts: list[str] = [
@@ -742,13 +789,13 @@ def sanitize_session(session: SessionRef, limit: int = 45000) -> str:
             message = compact_text(str(payload.get("message", "")))
             if message:
                 parts.append(f"USER {timestamp}:\n{message}")
-        elif row_type == "event_msg" and payload_type == "agent_message":
+        elif row_type == "event_msg" and payload_type in {"agent_message", "assistant_message"}:
             phase = payload.get("phase", "")
-            message = compact_text(str(payload.get("message", "")), limit=1500)
+            message = compact_text(payload_text(payload, "message"), limit=1500)
             if message:
                 parts.append(f"ASSISTANT {phase} {timestamp}:\n{message}")
         elif row_type == "event_msg" and payload_type == "task_complete":
-            message = compact_text(str(payload.get("last_agent_message", "")), limit=5000)
+            message = compact_text(payload_text(payload, "last_agent_message", "message"), limit=5000)
             if message:
                 parts.append(f"TASK COMPLETE {timestamp}:\n{message}")
         elif row_type == "event_msg" and payload_type in {"patch_apply_end", "exec_command_end", "error"}:
@@ -756,8 +803,8 @@ def sanitize_session(session: SessionRef, limit: int = 45000) -> str:
             if summary:
                 parts.append(f"EVENT {payload_type} {timestamp}: {summary}")
         elif row_type == "compacted":
-            payload_text = compact_text(json.dumps(payload, ensure_ascii=False), limit=1500)
-            parts.append(f"CONTEXT COMPACTED {timestamp}: {payload_text}")
+            compacted_payload = compact_text(json.dumps(payload, ensure_ascii=False), limit=1500)
+            parts.append(f"CONTEXT COMPACTED {timestamp}: {compacted_payload}")
 
     sanitized = "\n\n".join(parts)
     if len(sanitized) > limit:
@@ -807,12 +854,12 @@ def collect_session_signals(session: SessionRef, targets: dict[str, MemoryTarget
             text = compact_text(str(payload.get("message", "")), limit=4000)
             if text:
                 user_parts.append(text)
-        elif row_type == "event_msg" and payload_type == "agent_message":
-            text = compact_text(str(payload.get("message", "")), limit=1000)
+        elif row_type == "event_msg" and payload_type in {"agent_message", "assistant_message"}:
+            text = compact_text(payload_text(payload, "message"), limit=1000)
             if text:
                 assistant_parts.append(text)
         elif row_type == "event_msg" and payload_type == "task_complete":
-            text = compact_text(str(payload.get("last_agent_message", "")), limit=6000)
+            text = compact_text(payload_text(payload, "last_agent_message", "message"), limit=6000)
             if text:
                 complete_parts.append(text)
 
@@ -879,6 +926,20 @@ def _extract_repo_relative_paths(text: str) -> tuple[str, ...]:
     return tuple(ordered[:12])
 
 
+def _extract_outcome_reported_successful_commands(text: str) -> tuple[str, ...]:
+    if not any(pattern.search(text) for pattern in SUCCESSFUL_OUTCOME_PATTERNS):
+        return ()
+    commands: list[str] = []
+    for match in re.findall(r"`([^`\n]{3,240})`", text):
+        command = " ".join(match.strip().split())
+        if not command or command in commands:
+            continue
+        first = command.split()[0]
+        if first in COMMAND_PREFIXES or command.startswith("./"):
+            commands.append(command)
+    return tuple(commands[:8])
+
+
 def build_session_evidence(session: SessionRef, signals: SessionSignals) -> SessionEvidence:
     rows = read_jsonl(session.path)
     changed_files: list[str] = []
@@ -909,6 +970,11 @@ def build_session_evidence(session: SessionRef, signals: SessionSignals) -> Sess
             bucket = successful_commands if exit_code == 0 else failed_commands
             if command not in bucket:
                 bucket.append(command)
+
+    outcome_text = f"{signals.assistant_text}\n{signals.task_complete_text}"
+    for command in _extract_outcome_reported_successful_commands(outcome_text):
+        if command not in successful_commands:
+            successful_commands.append(command)
 
     artifact_paths = list(changed_files)
     for path_value in _extract_repo_relative_paths(
@@ -1055,13 +1121,13 @@ def schema_text() -> str:
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
-                            "required": ["section", "fact", "confidence"],
+                            "required": ["section", "fact", "confidence", "repo_paths", "grouping_key"],
                             "properties": {
                                 "section": {"type": "string"},
                                 "fact": {"type": "string"},
                                 "confidence": {"type": "number", "minimum": 0, "maximum": 1},
-                                "repo_paths": {"type": "array", "items": {"type": "string"}},
-                                "grouping_key": {"type": "string"},
+                                "repo_paths": {"type": ["array", "null"], "items": {"type": "string"}},
+                                "grouping_key": {"type": ["string", "null"]},
                             },
                         },
                     },
@@ -1180,12 +1246,21 @@ def is_transient_connectivity_error(text: str) -> bool:
     return any(pattern.search(text) for pattern in TRANSIENT_CONNECTIVITY_PATTERNS)
 
 
+def is_classifier_environment_error(text: str) -> bool:
+    if not text.strip():
+        return False
+    return any(pattern.search(text) for pattern in CLASSIFIER_ENVIRONMENT_PATTERNS)
+
+
 def classify_session(
     session: SessionRef,
     targets: dict[str, MemoryTarget],
     sanitized: str,
     evidence: SessionEvidence,
     timeout: int,
+    model: str | None = None,
+    reasoning: str | None = None,
+    classifier_codex_home: Path | None = None,
 ) -> dict[str, Any]:
     codex = find_codex()
     if not Path(codex).exists() and shutil.which(codex) is None:
@@ -1195,6 +1270,11 @@ def classify_session(
         schema_path = Path(tmpdir) / "schema.json"
         output_path = Path(tmpdir) / "output.json"
         schema_path.write_text(schema_text(), encoding="utf-8")
+        classifier_home = classifier_codex_home.expanduser() if classifier_codex_home is not None else CODEX_HOME
+        classifier_workdir = next(
+            (target.project_root for target in targets.values() if target.project_root is not None),
+            None,
+        ) or classifier_home
         cmd = [
             codex,
             "exec",
@@ -1203,14 +1283,19 @@ def classify_session(
             "--sandbox",
             "read-only",
             "--cd",
-            str(CODEX_HOME),
+            str(classifier_workdir),
             "--output-schema",
             str(schema_path),
             "-o",
             str(output_path),
-            prompt_for_session(session, targets, sanitized, evidence),
         ]
+        if model:
+            cmd.extend(["--model", model])
+        if reasoning:
+            cmd.extend(["-c", f"model_reasoning_effort={json.dumps(reasoning)}"])
+        cmd.append(prompt_for_session(session, targets, sanitized, evidence))
         env = os.environ.copy()
+        env["CODEX_HOME"] = str(classifier_home)
         codex_parent = str(Path(codex).expanduser().parent)
         if codex_parent and codex_parent != ".":
             env["PATH"] = f"{codex_parent}:{env.get('PATH', '')}"
@@ -1222,6 +1307,11 @@ def classify_session(
             error_text = "\n".join(part for part in (proc.stderr, proc.stdout) if part).strip()
             if is_usage_limit_error(error_text):
                 raise UsageLimitClassificationError("codex classifier usage limit reached; retry after quota resets")
+            if is_classifier_environment_error(error_text):
+                raise ClassifierEnvironmentError(
+                    "codex classifier is blocked by the shell execution environment; "
+                    "run from a writable/network-enabled environment where nested codex exec can reach OpenAI"
+                )
             if is_transient_connectivity_error(error_text):
                 raise ConnectivityClassificationError("codex classifier transport failed; retry when connectivity recovers")
             raise RuntimeError(f"codex exec failed with exit {proc.returncode}: {error_text[-2000:]}")
@@ -1371,6 +1461,7 @@ def write_report(
     rejected: list[dict[str, Any]],
     failed: list[dict[str, str]],
     dry_run: bool,
+    classifier_config: dict[str, str | int | None] | None = None,
 ) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORT_DIR / f"{run_id}-report.md"
@@ -1379,6 +1470,10 @@ def write_report(
         f"# Codex Memory Review - {run_date}",
         "",
         f"- Mode: {'dry-run' if dry_run else 'apply'}",
+        f"- Classifier model: {classifier_config.get('model') if classifier_config else 'default'}",
+        f"- Classifier reasoning: {classifier_config.get('reasoning') if classifier_config else 'default'}",
+        f"- Classifier timeout seconds: {classifier_config.get('timeout') if classifier_config else 'default'}",
+        f"- Classifier Codex home: {classifier_config.get('codex_home') if classifier_config else 'default'}",
         f"- Sessions processed: {len(sessions)}",
         f"- Skipped before classification: {len(skipped)}",
         f"- Deferred sessions: {len(deferred)}",
@@ -1697,7 +1792,16 @@ def process(args: argparse.Namespace) -> int:
                 f"Classifying session {session.id} with {len(prompt_targets)} prompt target(s): "
                 f"{', '.join(prompt_targets)}"
             )
-            result = classify_session(session, prompt_targets, sanitized, evidence, args.codex_timeout)
+            result = classify_session(
+                session,
+                prompt_targets,
+                sanitized,
+                evidence,
+                args.codex_timeout,
+                model=getattr(args, "codex_model", None),
+                reasoning=getattr(args, "codex_reasoning", None),
+                classifier_codex_home=getattr(args, "classifier_codex_home", None),
+            )
             candidates = result.get("candidates", [])
             if not isinstance(candidates, list):
                 raise RuntimeError("classifier returned non-list candidates")
@@ -1756,6 +1860,10 @@ def process(args: argparse.Namespace) -> int:
             deferred.append({"session_id": session.id, "error": str(exc)})
             retryable_classifier_outage = "classification deferred because an earlier session hit a transient Codex transport failure"
             log(f"Deferred session {session.id}: {exc}")
+        except ClassifierEnvironmentError as exc:
+            deferred.append({"session_id": session.id, "error": str(exc)})
+            retryable_classifier_outage = "classification deferred because the shell execution environment blocks nested Codex classification"
+            log(f"Deferred session {session.id}: {exc}")
         except TimeoutClassificationError as exc:
             deferred.append({"session_id": session.id, "error": str(exc)})
             retryable_classifier_outage = "classification deferred because an earlier session hit the nested Codex timeout"
@@ -1797,6 +1905,12 @@ def process(args: argparse.Namespace) -> int:
         rejected,
         failed,
         args.dry_run,
+        {
+            "model": getattr(args, "codex_model", None) or "default",
+            "reasoning": getattr(args, "codex_reasoning", None) or "default",
+            "timeout": getattr(args, "codex_timeout", None),
+            "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
+        },
     )
 
     if not args.dry_run:
@@ -1823,6 +1937,12 @@ def process(args: argparse.Namespace) -> int:
                 rejected,
                 failed,
                 args.dry_run,
+                {
+                    "model": getattr(args, "codex_model", None) or "default",
+                    "reasoning": getattr(args, "codex_reasoning", None) or "default",
+                    "timeout": getattr(args, "codex_timeout", None),
+                    "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
+                },
             )
             if auto_create_failures:
                 return 1
@@ -1858,6 +1978,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-sessions", type=int, default=20, help="Maximum sessions to classify in one run.")
     parser.add_argument("--verbose", action="store_true", help="Write sanitized classifier inputs to the log dir.")
     parser.add_argument("--codex-timeout", type=int, default=900, help="Per-session codex exec timeout in seconds.")
+    parser.add_argument(
+        "--classifier-codex-home",
+        type=Path,
+        default=Path(os.environ["GOVKB_CLASSIFIER_CODEX_HOME"]).expanduser()
+        if os.environ.get("GOVKB_CLASSIFIER_CODEX_HOME")
+        else None,
+        help=(
+            "Codex home used only for nested classifier auth/config. "
+            "State, reports, skills, and governed output still use CODEX_HOME. "
+            "Can also be set with GOVKB_CLASSIFIER_CODEX_HOME."
+        ),
+    )
+    parser.add_argument(
+        "--codex-model",
+        default=os.environ.get("GOVKB_CODEX_MODEL"),
+        help="Codex model used for nested semantic classification. Can also be set with GOVKB_CODEX_MODEL.",
+    )
+    parser.add_argument(
+        "--codex-reasoning",
+        choices=("low", "medium", "high", "xhigh"),
+        default=os.environ.get("GOVKB_CODEX_REASONING"),
+        help="Codex reasoning effort used for nested semantic classification. Can also be set with GOVKB_CODEX_REASONING.",
+    )
     parser.add_argument("--session-file", help="Classify one explicit session JSONL file.")
     parser.add_argument("--project-root", help="Limit review state, reports, and session selection to one governed project.")
     parser.add_argument(

@@ -75,6 +75,17 @@ def build_parser() -> argparse.ArgumentParser:
     review_parser.add_argument("--max-sessions", type=int, help="Maximum sessions to classify in one run.")
     review_parser.add_argument("--verbose", action="store_true", help="Write sanitized classifier inputs to the memory-review log dir.")
     review_parser.add_argument("--codex-timeout", type=int, help="Per-session codex exec timeout in seconds.")
+    review_parser.add_argument(
+        "--classifier-codex-home",
+        type=Path,
+        help="Codex home used only for nested classifier auth/config; output state still uses CODEX_HOME.",
+    )
+    review_parser.add_argument("--codex-model", help="Codex model used for nested semantic classification.")
+    review_parser.add_argument(
+        "--codex-reasoning",
+        choices=("low", "medium", "high", "xhigh"),
+        help="Codex reasoning effort used for nested semantic classification.",
+    )
     review_parser.add_argument("--session-file", type=Path, help="Classify one explicit session JSONL file.")
     review_parser.add_argument(
         "--no-auto-promote",

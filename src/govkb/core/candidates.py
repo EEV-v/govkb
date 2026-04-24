@@ -621,8 +621,8 @@ def _scope_metadata(
         topic = _repeated_work_topic(summary)
         scope_summary = f"Reusable {topic}." if topic else summary
         if topic:
-            in_scope.append(f"stable {topic} steps proven across sessions")
-            in_scope.append(f"stable commands or conventions that should change future {topic} work")
+            in_scope.append(f"repeatable {topic} steps and evidence observed across sessions")
+            in_scope.append(f"{topic} commands, artifacts, and conventions that should be reused in future work")
         else:
             in_scope.append("reusable workflow and verification steps proven across sessions")
             in_scope.append("stable commands or conventions that should change future work in this topic area")
@@ -1233,6 +1233,69 @@ def _fact_text_for_scope(scope_summary: str) -> str:
     return f"Focus this capability on {lowered}."
 
 
+def _fact_topic(scope_summary: str) -> str:
+    summary = re.sub(r"\s+", " ", scope_summary.strip()).rstrip(".")
+    if not summary:
+        return "capability"
+    lowered = summary[0].lower() + summary[1:]
+    if lowered.startswith("reusable "):
+        lowered = lowered[len("reusable ") :].strip()
+    topic = lowered.split(",", 1)[0].strip()
+    if not topic or len(topic) > 80:
+        return "capability"
+    return topic
+
+
+def _repo_artifact_fact(path_value: str, fact_topic: str) -> str:
+    lowered = path_value.lower()
+    topic = fact_topic if fact_topic != "capability" else "capability"
+    if lowered.startswith("docs/") or lowered.endswith(".md"):
+        return f"Use `{path_value}` as durable {topic} documentation."
+    if "test" in lowered or lowered.endswith((".csproj", ".spec.ts", ".test.ts", ".py")):
+        return f"Use `{path_value}` as a durable {topic} test artifact."
+    return f"Use `{path_value}` as a durable {topic} repo artifact."
+
+
+def _verification_command_fact(command: str, fact_topic: str) -> str:
+    topic = fact_topic if fact_topic != "capability" else "capability"
+    return f"Use `{command}` as the {topic} verification command."
+
+
+def _generic_scope_item(item: str, fact_topic: str) -> bool:
+    lowered = item.lower().strip()
+    topic = fact_topic.lower()
+    return (
+        lowered.startswith(f"stable {topic}")
+        or lowered.startswith(f"repeatable {topic}")
+        or lowered.startswith(f"{topic} commands, artifacts")
+        or lowered.startswith("stable commands or conventions")
+    )
+
+
+def _observed_workflow_row(
+    *,
+    observed_rows: tuple[dict[str, object], ...],
+    fact_topic: str,
+    source_sessions: tuple[str, ...],
+) -> dict[str, object] | None:
+    has_repo_artifact = any(row.get("section") == "Code And Docs Map" for row in observed_rows)
+    has_verification = any(row.get("section") == "Commands And Verification" for row in observed_rows)
+    if not has_repo_artifact or not has_verification:
+        return None
+    topic = fact_topic if fact_topic != "capability" else "the capability"
+    return {
+        "grouping_key": "observed-workflow",
+        "section": "Stable Workflows",
+        "fact": (
+            f"For {topic}, update durable documentation and run the verification command "
+            "before treating the workflow as complete."
+        ),
+        "confidence": 0.78,
+        "provenance_sessions": list(source_sessions),
+        "repo_paths": [],
+    }
+
+
 def _fact_section(item: str) -> str:
     lowered = item.lower()
     if any(token in lowered for token in ("verify", "verification", "health", "readiness", "check", "checks", "signal", "signals")):
@@ -1259,6 +1322,7 @@ def _observed_fact_rows(
     *,
     session_text: str,
     source_sessions: tuple[str, ...],
+    fact_topic: str,
 ) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
     for index, path_value in enumerate(_repo_paths_from_text(session_text, limit=6), start=1):
@@ -1266,7 +1330,7 @@ def _observed_fact_rows(
             {
                 "grouping_key": f"repo-artifact-{index}",
                 "section": "Code And Docs Map",
-                "fact": f"Use `{path_value}` as a durable repo artifact for this candidate.",
+                "fact": _repo_artifact_fact(path_value, fact_topic),
                 "confidence": 0.74,
                 "provenance_sessions": list(source_sessions),
                 "repo_paths": [path_value],
@@ -1277,7 +1341,7 @@ def _observed_fact_rows(
             {
                 "grouping_key": f"verification-command-{index}",
                 "section": "Commands And Verification",
-                "fact": f"Use `{command}` as a reusable verification command for this candidate.",
+                "fact": _verification_command_fact(command, fact_topic),
                 "confidence": 0.76,
                 "provenance_sessions": list(source_sessions),
                 "repo_paths": list(_repo_paths_from_text(command, limit=4)),
@@ -1294,6 +1358,12 @@ def _candidate_fact_rows(
     session_text: str = "",
 ) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
+    fact_topic = _fact_topic(scope_summary)
+    observed_rows = _observed_fact_rows(
+        session_text=session_text,
+        source_sessions=source_sessions,
+        fact_topic=fact_topic,
+    )
     rows.append(
         {
             "grouping_key": "scope-summary",
@@ -1304,7 +1374,17 @@ def _candidate_fact_rows(
         }
     )
     seen_facts = {str(rows[0]["fact"])}
+    observed_workflow = _observed_workflow_row(
+        observed_rows=observed_rows,
+        fact_topic=fact_topic,
+        source_sessions=source_sessions,
+    )
+    if observed_workflow is not None:
+        rows.append(observed_workflow)
+        seen_facts.add(str(observed_workflow["fact"]))
     for index, item in enumerate(in_scope, start=1):
+        if observed_rows and _generic_scope_item(item, fact_topic):
+            continue
         fact = _sentence_case(item).rstrip(".") + "."
         if fact in seen_facts:
             continue
@@ -1319,7 +1399,7 @@ def _candidate_fact_rows(
                 "repo_paths": [],
             }
         )
-    for row in _observed_fact_rows(session_text=session_text, source_sessions=source_sessions):
+    for row in observed_rows:
         fact = str(row["fact"])
         if fact in seen_facts:
             continue

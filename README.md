@@ -9,6 +9,7 @@ Repo-native governed knowledge tooling for project AI collaboration.
   - [business.md](docs/governed-skill-knowledge-framework/business.md)
   - [implementation-plan.md](docs/governed-skill-knowledge-framework/implementation-plan.md)
   - [kb-quality-implementation-plan.md](docs/governed-skill-knowledge-framework/kb-quality-implementation-plan.md)
+  - [mvp-plus-test-plan.md](docs/governed-skill-knowledge-framework/mvp-plus-test-plan.md)
   - [aiapps-real-usage-test-plan.md](docs/governed-skill-knowledge-framework/aiapps-real-usage-test-plan.md)
 
 ## Current scope
