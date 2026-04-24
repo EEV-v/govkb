@@ -44,6 +44,17 @@ requires_explicit_acceptance = false
 [memory.targets.main]
 path = "../escape.md"
 sections = ["Working Agreement"]
+
+[bootstrap]
+profile = "workflow"
+repo_roots = ["."]
+authority_paths = []
+seed_paths = []
+
+[kb_health]
+requires_verification_commands = true
+requires_repo_map = true
+required_sections = ["Working Agreement"]
 """,
                 encoding="utf-8",
             )
@@ -86,6 +97,17 @@ requires_explicit_acceptance = false
 [memory.targets.main]
 path = "references/long-term-memory.md"
 sections = ["Working Agreement"]
+
+[bootstrap]
+profile = "workflow"
+repo_roots = ["."]
+authority_paths = []
+seed_paths = []
+
+[kb_health]
+requires_verification_commands = true
+requires_repo_map = true
+required_sections = ["Working Agreement"]
 """,
                     encoding="utf-8",
                 )

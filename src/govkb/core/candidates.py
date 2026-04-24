@@ -94,6 +94,11 @@ DOMAIN_PRIORITY_TOKENS = (
     "cli",
 )
 
+BACKEND_ROUTING_TOKENS = {"backend", "api", "dotnet"}
+FRONTEND_ROUTING_TOKENS = {"frontend", "web", "ui"}
+AUTH_ROUTING_TOKENS = {"auth", "login", "keycloak", "e2e", "playwright"}
+COMPATIBLE_DOMAIN_GROUPS = (frozenset({"api", "backend"}),)
+
 STACK_SIGNAL_TOKENS = {
     "compose",
     "container",
@@ -359,6 +364,49 @@ def _primary_domain_token(signal_tokens: tuple[str, ...]) -> str | None:
     return None
 
 
+def _canonical_routing_hints(capability_id: str, hints: tuple[str, ...], ignored_tokens: set[str]) -> tuple[str, ...]:
+    signal_tokens = _ordered_signal_tokens(capability_id, hints, ignored_tokens)
+    token_set = set(signal_tokens)
+    ordered: list[str] = []
+
+    def add(*values: str) -> None:
+        for value in values:
+            normalized = value.strip().lower()
+            if not normalized or normalized in ordered:
+                continue
+            ordered.append(normalized)
+
+    if capability_id == "auth-e2e-workflow" or ("e2e" in token_set and AUTH_ROUTING_TOKENS & token_set):
+        add("auth", "e2e", "login", "keycloak", "playwright", "frontend", "compose", "ports", "verification")
+        return tuple(ordered)
+
+    if capability_id.endswith("-local-stack-workflow"):
+        domain = capability_id[: -len("-local-stack-workflow")].replace("-", " ").strip()
+        if domain:
+            add(*_tokenize(domain))
+        add("compose", "docker", "ports", "stack", "startup", "workflow")
+        if "dotnet" in token_set:
+            add("dotnet")
+        if "postgres" in token_set:
+            add("postgres")
+        return tuple(ordered)
+
+    if capability_id.endswith("-compose-workflow"):
+        add("compose", "docker", "ports", "stack", "startup", "workflow")
+        return tuple(ordered)
+
+    preferred_domain = next((token for token in DOMAIN_PRIORITY_TOKENS if token in token_set), None)
+    if preferred_domain:
+        add(preferred_domain)
+    for token in signal_tokens:
+        if token in TOPIC_BOUNDARY_TOKENS or token in TOPIC_SUFFIX_TOKENS:
+            continue
+        add(token)
+        if len(ordered) >= 8:
+            break
+    return tuple(ordered) or hints
+
+
 def _suggested_capability_ids(candidate_id: str, hints: tuple[str, ...], ignored_tokens: set[str]) -> tuple[str, ...]:
     signal_tokens = _ordered_signal_tokens(candidate_id, hints, ignored_tokens)
     token_set = set(signal_tokens)
@@ -472,6 +520,29 @@ def _should_refresh_proposal(candidate_id: str, default_capability_id: str, hint
     return False
 
 
+def _domains_conflict(
+    candidate_id: str,
+    hints: tuple[str, ...],
+    existing_id: str,
+    existing_hints: tuple[str, ...],
+    ignored_tokens: set[str],
+) -> bool:
+    requested_tokens = set(_ordered_signal_tokens(candidate_id, hints, ignored_tokens))
+    existing_tokens = set(_ordered_signal_tokens(existing_id, existing_hints, ignored_tokens))
+    requested_auth = bool(AUTH_ROUTING_TOKENS & requested_tokens)
+    existing_auth = bool(AUTH_ROUTING_TOKENS & existing_tokens)
+    if requested_auth != existing_auth:
+        return True
+
+    requested_domain = next((token for token in DOMAIN_PRIORITY_TOKENS if token in requested_tokens), None)
+    existing_domain = next((token for token in DOMAIN_PRIORITY_TOKENS if token in existing_tokens), None)
+    if not requested_domain or not existing_domain or requested_domain == existing_domain:
+        return False
+    if frozenset({requested_domain, existing_domain}) in COMPATIBLE_DOMAIN_GROUPS:
+        return False
+    return True
+
+
 def _remove_stale_session_candidates(governed_root: Path, keep_root: Path, session_id: str) -> None:
     candidates_root = governed_root / "candidates"
     if not candidates_root.is_dir():
@@ -520,9 +591,13 @@ def _matching_candidate(
         proposal = existing.get("proposal") if isinstance(existing.get("proposal"), dict) else {}
         existing_hints = proposal.get("routing_hints") if isinstance(proposal.get("routing_hints"), list) else ()
         existing_summary = str(proposal.get("summary") or "")
+        existing_hint_values = tuple(str(item) for item in existing_hints)
+
+        if _domains_conflict(candidate_id, hints, existing_id, existing_hint_values, ignored_tokens):
+            continue
 
         id_overlap = len(requested_id_tokens & _core_tokens([existing_id], ignored_tokens))
-        hint_overlap = len(requested_hint_tokens & _core_tokens(tuple(str(item) for item in existing_hints), ignored_tokens))
+        hint_overlap = len(requested_hint_tokens & _core_tokens(existing_hint_values, ignored_tokens))
         summary_overlap = len(requested_summary_tokens & _core_tokens([existing_summary], ignored_tokens))
         if id_overlap < 2 and not (hint_overlap >= 3 and (id_overlap >= 1 or summary_overlap >= 1)):
             continue
@@ -635,13 +710,84 @@ def _routing_negative_hints(capability_id: str, hints: tuple[str, ...]) -> tuple
     ]
     tokens = set(_tokenize(capability_id))
     tokens.update(hint.lower() for hint in hints)
-    if "backend" in tokens:
+    has_backend = bool(BACKEND_ROUTING_TOKENS & tokens)
+    has_frontend = bool(FRONTEND_ROUTING_TOKENS & tokens)
+    has_auth = bool(AUTH_ROUTING_TOKENS & tokens)
+    if has_backend and not has_frontend and not has_auth:
         negatives.extend(["auth", "login", "keycloak", "e2e", "playwright", "frontend"])
-    if "frontend" in tokens:
+    if has_frontend and not has_backend and not has_auth:
         negatives.extend(["backend", "dotnet", "migration", "postgres", "database"])
-    if {"auth", "login", "keycloak", "e2e", "playwright"} & tokens:
+    if has_auth:
         negatives.extend(["migration", "database schema", "backend stack"])
     return tuple(dict.fromkeys(negatives))
+
+
+def _workflow_sections_for_capability(capability_id: str) -> tuple[str, ...]:
+    if capability_id.endswith("project-knowledge-steward"):
+        return (
+            "Project Working Agreement",
+            "Stable Workflows",
+            "Commands And Verification",
+            "Repo Conventions",
+            "Code And Docs Map",
+            "Authority Rules",
+            "Candidate Skill Signals",
+        )
+    return (
+        "Working Agreement",
+        "Stable Workflows",
+        "Commands And Verification",
+        "Code And Docs Map",
+        "Authority Rules",
+    )
+
+
+def _bootstrap_profile_for_capability(capability_id: str) -> str:
+    if capability_id.endswith("project-knowledge-steward"):
+        return "steward"
+    return "workflow"
+
+
+def _bootstrap_seed_paths(capability_id: str, hints: tuple[str, ...]) -> tuple[str, ...]:
+    tokens = set(_tokenize(capability_id))
+    tokens.update(_tokenize(" ".join(hints)))
+    seed_paths = ["README.md", "docs"]
+    if {"backend", "api", "dotnet"} & tokens:
+        seed_paths.extend(["backend", "backend-dotnet", "src", "tests"])
+    if {"frontend", "web", "ui"} & tokens:
+        seed_paths.extend(["frontend", "web", "app", "src", "tests"])
+    if {"auth", "login", "keycloak", "e2e", "playwright"} & tokens:
+        seed_paths.extend(["auth", "tests", "e2e", "playwright"])
+    if {"compose", "docker", "stack", "startup"} & tokens:
+        seed_paths.extend(["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml", "scripts"])
+    if capability_id.endswith("project-knowledge-steward"):
+        seed_paths.extend(["src", "tests"])
+    return tuple(dict.fromkeys(seed_paths))
+
+
+def _bootstrap_authority_paths(capability_id: str, hints: tuple[str, ...]) -> tuple[str, ...]:
+    tokens = set(_tokenize(capability_id))
+    tokens.update(_tokenize(" ".join(hints)))
+    paths = ["README.md"]
+    if {"compose", "docker", "stack", "startup"} & tokens:
+        paths.extend(["docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"])
+    return tuple(dict.fromkeys(paths))
+
+
+def _kb_health_block(capability_id: str) -> tuple[bool, bool, tuple[str, ...]]:
+    if capability_id.endswith("project-knowledge-steward"):
+        return False, True, (
+            "Project Working Agreement",
+            "Stable Workflows",
+            "Code And Docs Map",
+            "Candidate Skill Signals",
+        )
+    return True, True, (
+        "Working Agreement",
+        "Stable Workflows",
+        "Commands And Verification",
+        "Code And Docs Map",
+    )
 
 
 def _candidate_toml(
@@ -704,6 +850,11 @@ def _draft_contract(
     name = capability_id.replace("-", " ").title()
     aliases = (f"${capability_id}", capability_id, capability_id.replace("-", " "), *candidate_aliases)
     negative_hints = _routing_negative_hints(capability_id, hints)
+    sections = _workflow_sections_for_capability(capability_id)
+    bootstrap_profile = _bootstrap_profile_for_capability(capability_id)
+    seed_paths = _bootstrap_seed_paths(capability_id, hints)
+    authority_paths = _bootstrap_authority_paths(capability_id, hints)
+    requires_verification_commands, requires_repo_map, required_sections = _kb_health_block(capability_id)
     scope_lines = [f"# Scope summary: {scope_summary}", "# In scope:"]
     scope_lines.extend(f"# - {item}" for item in in_scope)
     scope_lines.append("# Out of scope:")
@@ -730,7 +881,18 @@ requires_explicit_acceptance = false
 
 [memory.targets.main]
 path = "references/long-term-memory.md"
-sections = ["Working Agreement", "Stable Patterns", "Verification Notes"]
+sections = {_toml_string_list(sections)}
+
+[bootstrap]
+profile = "{bootstrap_profile}"
+repo_roots = ["."]
+authority_paths = {_toml_string_list(authority_paths)}
+seed_paths = {_toml_string_list(seed_paths)}
+
+[kb_health]
+requires_verification_commands = {'true' if requires_verification_commands else 'false'}
+requires_repo_map = {'true' if requires_repo_map else 'false'}
+required_sections = {_toml_string_list(required_sections)}
 """
 
 
@@ -788,14 +950,100 @@ Scope summary: {scope_summary}
 
 - Use this section for stable capability-specific operating rules after activation.
 
-## Stable Patterns
+## Stable Workflows
 
-- Use this section for recurring project patterns observed across sessions.
+- Use this section for recurring project workflow patterns observed across sessions.
 
-## Verification Notes
+## Commands And Verification
 
 - Use this section for durable validation commands, evidence expectations, and safety checks.
+
+## Code And Docs Map
+
+- Use this section for durable repo-relative code, test, and docs locations.
+
+## Authority Rules
+
+- Use this section for durable authority rules when one governed source should win.
 """
+
+
+def _sentence_case(text: str) -> str:
+    text = re.sub(r"\s+", " ", text.strip())
+    if not text:
+        return text
+    return text[0].upper() + text[1:]
+
+
+def _fact_text_for_scope(scope_summary: str) -> str:
+    summary = re.sub(r"\s+", " ", scope_summary.strip()).rstrip(".")
+    if not summary:
+        return "Focus this capability on stable, reusable project workflow knowledge."
+    lowered = summary[0].lower() + summary[1:]
+    return f"Focus this capability on {lowered}."
+
+
+def _fact_section(item: str) -> str:
+    lowered = item.lower()
+    if any(token in lowered for token in ("verify", "verification", "health", "readiness", "check", "checks", "signal", "signals")):
+        return "Commands And Verification"
+    return "Stable Workflows"
+
+
+def _candidate_fact_rows(
+    *,
+    scope_summary: str,
+    in_scope: tuple[str, ...],
+    source_sessions: tuple[str, ...],
+) -> tuple[dict[str, object], ...]:
+    rows: list[dict[str, object]] = []
+    rows.append(
+        {
+            "grouping_key": "scope-summary",
+            "section": "Working Agreement",
+            "fact": _fact_text_for_scope(scope_summary),
+            "confidence": 0.78,
+            "provenance_sessions": list(source_sessions),
+        }
+    )
+    seen_facts = {rows[0]["fact"]}
+    for index, item in enumerate(in_scope, start=1):
+        fact = _sentence_case(item).rstrip(".") + "."
+        if fact in seen_facts:
+            continue
+        seen_facts.add(fact)
+        rows.append(
+            {
+                "grouping_key": f"in-scope-{index}",
+                "section": _fact_section(item),
+                "fact": fact,
+                "confidence": 0.72 if _fact_section(item) == "Stable Patterns" else 0.74,
+                "provenance_sessions": list(source_sessions),
+            }
+        )
+    return tuple(rows)
+
+
+def _candidate_facts_toml(
+    *,
+    scope_summary: str,
+    in_scope: tuple[str, ...],
+    source_sessions: tuple[str, ...],
+) -> str:
+    lines = ["facts_version = 1", ""]
+    for row in _candidate_fact_rows(
+        scope_summary=scope_summary,
+        in_scope=in_scope,
+        source_sessions=source_sessions,
+    ):
+        lines.append("[[facts]]")
+        lines.append(f'grouping_key = {json.dumps(str(row["grouping_key"]))}')
+        lines.append(f'section = {json.dumps(str(row["section"]))}')
+        lines.append(f'fact = {json.dumps(str(row["fact"]))}')
+        lines.append(f'confidence = {float(row["confidence"]):.2f}')
+        lines.append(f'provenance_sessions = {_toml_string_list(tuple(str(item) for item in row["provenance_sessions"]))}')
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def stage_candidate_from_session(project_root: Path, session_file: Path) -> CandidateStageResult:
@@ -810,9 +1058,11 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
     candidate_id = _candidate_id(user_text, assistant_text, ignored_tokens)
     proposed_candidate_id = candidate_id
     summary = _candidate_summary(candidate_id, user_text, ignored_tokens)
-    hints = _keywords(f"{user_text}\n{assistant_text}", limit=10, ignored_tokens=ignored_tokens) or (
+    raw_hints = _keywords(f"{user_text}\n{assistant_text}", limit=10, ignored_tokens=ignored_tokens) or (
         candidate_id.replace("-", " "),
     )
+    initial_default_capability_id = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)[0]
+    hints = _canonical_routing_hints(initial_default_capability_id, raw_hints, ignored_tokens)
     candidate_root = governed_root / "candidates" / candidate_id
     candidate_path = candidate_root / "candidate.toml"
     existing = _read_existing(candidate_path)
@@ -901,11 +1151,12 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
             or not any(isinstance(item, str) and item.strip() for item in legacy_suggestions)
             or refresh_proposal
         ):
-            suggested_capability_ids = _suggested_capability_ids(candidate_id, hints, ignored_tokens)
+            suggested_capability_ids = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)
             default_capability_id = suggested_capability_ids[0]
         else:
             default_capability_id = existing_default_capability_id
             suggested_capability_ids = candidate_suggested_capability_ids(existing, candidate_id)
+        hints = _canonical_routing_hints(default_capability_id, raw_hints, ignored_tokens)
         existing_summary = proposal.get("summary") if isinstance(proposal, dict) else None
         if isinstance(existing_summary, str) and existing_summary.strip():
             summary = existing_summary
@@ -927,14 +1178,14 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
         else:
             scope_summary = existing_scope_summary
     else:
-        suggested_capability_ids = _suggested_capability_ids(candidate_id, hints, ignored_tokens)
+        suggested_capability_ids = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)
         default_capability_id = suggested_capability_ids[0]
+        hints = _canonical_routing_hints(default_capability_id, raw_hints, ignored_tokens)
         summary = _narrowed_summary(default_capability_id, summary)
         scope_summary, in_scope, out_of_scope = _scope_metadata(default_capability_id, hints, ignored_tokens, summary)
 
     _remove_stale_session_candidates(governed_root, candidate_root, session_id)
     candidate_root.mkdir(parents=True, exist_ok=True)
-    (candidate_root / "references").mkdir(parents=True, exist_ok=True)
     candidate_path.write_text(
         _candidate_toml(
             candidate_id=candidate_id,
@@ -953,22 +1204,14 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
         ),
         encoding="utf-8",
     )
-    evidence_path = candidate_root / "evidence.md"
-    evidence_header = f"# Candidate Evidence: {candidate_id}\n\n"
-    if not evidence_path.exists():
-        evidence_path.write_text(evidence_header, encoding="utf-8")
-    if not already_seen:
-        with evidence_path.open("a", encoding="utf-8") as fh:
-            fh.write(f"## {session_id}\n\n")
-            if timestamp:
-                fh.write(f"- Timestamp: `{timestamp}`\n")
-            fh.write(f"- Session file: `{session_file}`\n")
-            fh.write(f"- Summary: {summary}\n\n")
-            fh.write("### User Signal\n\n")
-            fh.write(_compact(user_text, limit=1200) + "\n\n")
-            if assistant_text.strip():
-                fh.write("### Assistant Signal\n\n")
-                fh.write(_compact(assistant_text, limit=1200) + "\n\n")
+    (candidate_root / "candidate-facts.toml").write_text(
+        _candidate_facts_toml(
+            scope_summary=scope_summary,
+            in_scope=in_scope,
+            source_sessions=tuple(source_sessions),
+        ),
+        encoding="utf-8",
+    )
 
     candidate_aliases = tuple(
         dict.fromkeys(
@@ -997,10 +1240,6 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
             scope_summary=scope_summary,
             candidate_id=candidate_id,
         ),
-        encoding="utf-8",
-    )
-    (candidate_root / "references" / "long-term-memory.md").write_text(
-        _memory_text(default_capability_id, summary, scope_summary),
         encoding="utf-8",
     )
     return CandidateStageResult(

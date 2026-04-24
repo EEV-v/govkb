@@ -8,7 +8,7 @@ Use this prompt in an active assistant session after the governed project is ins
 - Contract: `.governed/capabilities/project-knowledge-steward/capability.contract.toml`
 - Instructions: `.governed/capabilities/project-knowledge-steward/instructions.md`
 - Memory: `.governed/capabilities/project-knowledge-steward/references/long-term-memory.md`
-- Candidate evidence: none; initialize only from the current contract and repo facts.
+- Candidate facts: none; initialize only from the current contract and repo facts.
 
 ## Task
 

@@ -6,12 +6,15 @@ import re
 import shutil
 import sys
 from pathlib import Path
+import tomllib
 
 from govkb.core.candidates import candidate_default_capability_id
 from govkb.core.candidates import load_candidate
 from govkb.core.candidates import mark_candidate_activated
+from govkb.core.contracts import load_project_bundle
 from govkb.core.ids import normalize_identifier
 from govkb.core.init_prompt import initialize_kb_prompt_text
+from govkb.core.kb_bootstrap import bootstrap_capability
 from govkb.core.project import resolve_project_root
 
 
@@ -37,13 +40,42 @@ requires_explicit_acceptance = false
 
 [memory.targets.main]
 path = "references/long-term-memory.md"
-sections = ["Working Agreement"]
+sections = [
+  "Working Agreement",
+  "Stable Workflows",
+  "Commands And Verification",
+  "Code And Docs Map",
+  "Authority Rules",
+]
+
+[bootstrap]
+profile = "workflow"
+repo_roots = ["."]
+authority_paths = []
+seed_paths = []
+
+[kb_health]
+requires_verification_commands = true
+requires_repo_map = true
+required_sections = ["Working Agreement", "Stable Workflows", "Commands And Verification", "Code And Docs Map"]
 """
 
 
 def _memory_text(capability_id: str) -> str:
     title = capability_id.replace("-", " ").title()
-    return f"# {title}\n\n## Working Agreement\n\n- TODO: add durable guidance for this capability.\n"
+    return (
+        f"# {title}\n\n"
+        "## Working Agreement\n\n"
+        "- TODO: add durable guidance for this capability.\n\n"
+        "## Stable Workflows\n\n"
+        "- Add stable workflow steps here after bootstrap or repeated evidence.\n\n"
+        "## Commands And Verification\n\n"
+        "- Add durable verification commands here after bootstrap or repeated evidence.\n\n"
+        "## Code And Docs Map\n\n"
+        "- Add repo-relative code and docs locations here after bootstrap or repeated evidence.\n\n"
+        "## Authority Rules\n\n"
+        "- Add authority rules here when one governed file should win over broader docs.\n"
+    )
 
 
 def _instructions_text(capability_id: str) -> str:
@@ -70,6 +102,63 @@ def _candidate_prompt_text(capability_id: str, candidate_id: str, candidate_data
         scope_summary=scope_summary if isinstance(scope_summary, str) else None,
         candidate_id=candidate_id,
     )
+
+
+def _candidate_memory_text(candidate_root: Path, capability_id: str, candidate_data: dict[str, object]) -> str:
+    title = capability_id.replace("-", " ").title()
+    proposal = candidate_data.get("proposal") if isinstance(candidate_data.get("proposal"), dict) else {}
+    scope = candidate_data.get("scope") if isinstance(candidate_data.get("scope"), dict) else {}
+    summary = proposal.get("summary") if isinstance(proposal, dict) else None
+    scope_summary = scope.get("summary") if isinstance(scope, dict) else None
+    facts_path = candidate_root / "candidate-facts.toml"
+    facts_by_section: dict[str, list[str]] = {
+        "Working Agreement": [],
+        "Stable Workflows": [],
+        "Commands And Verification": [],
+        "Code And Docs Map": [],
+        "Authority Rules": [],
+    }
+    if facts_path.is_file():
+        data = tomllib.loads(facts_path.read_text(encoding="utf-8"))
+        for row in data.get("facts", ()):
+            if not isinstance(row, dict):
+                continue
+            fact = row.get("fact")
+            section = row.get("section")
+            if not isinstance(fact, str) or not fact.strip():
+                continue
+            if not isinstance(section, str) or not section.strip():
+                continue
+            facts_by_section.setdefault(section, [])
+            if fact not in facts_by_section[section]:
+                facts_by_section[section].append(fact)
+
+    lines = [f"# {title}", ""]
+    if isinstance(summary, str) and summary.strip():
+        lines.append(f"Candidate summary: {summary.strip()}")
+        lines.append("")
+    if isinstance(scope_summary, str) and scope_summary.strip():
+        lines.append(f"Scope summary: {scope_summary.strip()}")
+        lines.append("")
+
+    for section in ("Working Agreement", "Stable Workflows", "Commands And Verification", "Code And Docs Map", "Authority Rules"):
+        lines.append(f"## {section}")
+        lines.append("")
+        facts = facts_by_section.get(section, [])
+        if facts:
+            lines.extend(f"- {fact}" for fact in facts)
+        elif section == "Working Agreement":
+            lines.append("- Use this section for stable capability-specific operating rules after activation.")
+        elif section == "Stable Workflows":
+            lines.append("- Use this section for recurring project workflow patterns observed across sessions.")
+        elif section == "Commands And Verification":
+            lines.append("- Use this section for durable validation commands, evidence expectations, and safety checks.")
+        elif section == "Code And Docs Map":
+            lines.append("- Use this section for durable repo-relative code, test, and docs locations.")
+        else:
+            lines.append("- Use this section for durable authority rules when one governed source should win.")
+        lines.append("")
+    return "\n".join(lines).rstrip() + "\n"
 
 
 def _candidate_contract_text(candidate_root: Path, capability_id: str, candidate_id: str) -> str:
@@ -121,24 +210,44 @@ def run_create_capability(args) -> int:
             print(f"error: capability already exists: {capability_root}", file=sys.stderr)
             return 1
         instructions_path = candidate_root / "draft-instructions.md"
-        references_source = candidate_root / "references"
         if not instructions_path.is_file():
             print(f"error: candidate draft instructions not found: {instructions_path}", file=sys.stderr)
             return 1
-        if not references_source.is_dir():
-            print(f"error: candidate references not found: {references_source}", file=sys.stderr)
+        try:
+            capability_root.mkdir(parents=True, exist_ok=False)
+            references_root = capability_root / "references"
+            prompts_root = capability_root / "prompts"
+            references_root.mkdir(parents=True, exist_ok=False)
+            prompts_root.mkdir(parents=True, exist_ok=False)
+            (capability_root / "capability.contract.toml").write_text(contract_text, encoding="utf-8")
+            (capability_root / "instructions.md").write_text(instructions_path.read_text(encoding="utf-8"), encoding="utf-8")
+            (references_root / "long-term-memory.md").write_text(
+                _candidate_memory_text(candidate_root, capability_id, candidate_data),
+                encoding="utf-8",
+            )
+            (prompts_root / "initialize-kb.md").write_text(
+                _candidate_prompt_text(capability_id, candidate_id, candidate_data),
+                encoding="utf-8",
+            )
+            refreshed_bundle, refreshed_result = load_project_bundle(project_root)
+            for message in refreshed_result.warnings:
+                print(f"warning: {message.location}: {message.message}")
+            for message in refreshed_result.errors:
+                print(f"error: {message.location}: {message.message}", file=sys.stderr)
+            if refreshed_result.errors:
+                shutil.rmtree(capability_root, ignore_errors=True)
+                return 1
+            if not getattr(args, "no_init_kb", False):
+                bootstrap_result = bootstrap_capability(project_root, refreshed_bundle.capabilities[capability_id], candidate_root=candidate_root)
+                if bootstrap_result.added_facts:
+                    print(f"Bootstrapped KB for {capability_id}: {len(bootstrap_result.added_facts)} bullet(s)")
+                else:
+                    print(f"warning: {capability_id}: bootstrap found no new durable KB facts")
+            mark_candidate_activated(project_root, candidate_id, capability_id)
+        except Exception as exc:
+            shutil.rmtree(capability_root, ignore_errors=True)
+            print(f"error: could not create capability from candidate {candidate_id}: {exc}", file=sys.stderr)
             return 1
-        capability_root.mkdir(parents=True, exist_ok=False)
-        (capability_root / "capability.contract.toml").write_text(contract_text, encoding="utf-8")
-        (capability_root / "instructions.md").write_text(instructions_path.read_text(encoding="utf-8"), encoding="utf-8")
-        shutil.copytree(references_source, capability_root / "references")
-        prompts_root = capability_root / "prompts"
-        prompts_root.mkdir(parents=True, exist_ok=False)
-        (prompts_root / "initialize-kb.md").write_text(
-            _candidate_prompt_text(capability_id, candidate_id, candidate_data),
-            encoding="utf-8",
-        )
-        mark_candidate_activated(project_root, candidate_id, capability_id)
         print(f"Created capability from candidate: {capability_root}")
         return 0
 

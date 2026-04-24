@@ -153,6 +153,17 @@ class CandidateCommandTests(unittest.TestCase):
             self.assertEqual(candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
             self.assertEqual(candidate["proposal"]["suggested_capability_ids"][0], "backend-local-stack-workflow")
             self.assertEqual(candidate["scope"]["summary"], "Local backend stack orchestration, compose entrypoints, effective ports, and startup/debug behavior.")
+            facts_text = (
+                project_root
+                / ".governed"
+                / "candidates"
+                / "backend-workflow"
+                / "candidate-facts.toml"
+            ).read_text(encoding="utf-8")
+            self.assertIn('section = "Working Agreement"', facts_text)
+            self.assertIn('section = "Stable Workflows"', facts_text)
+            self.assertNotIn("Capture the reusable backend development workflow", facts_text)
+            self.assertFalse((project_root / ".governed" / "candidates" / "backend-workflow" / "evidence.md").exists())
             draft_contract = (project_root / ".governed" / "candidates" / "backend-workflow" / "draft-capability.contract.toml").read_text(encoding="utf-8")
             self.assertIn('"auth"', draft_contract)
             self.assertIn('"keycloak"', draft_contract)
@@ -174,7 +185,6 @@ class CandidateCommandTests(unittest.TestCase):
 
             legacy_root = project_root / ".governed" / "candidates" / "compose-backend-docker-repo-test"
             legacy_root.mkdir(parents=True, exist_ok=True)
-            (legacy_root / "references").mkdir(parents=True, exist_ok=True)
             (legacy_root / "candidate.toml").write_text(
                 """candidate_version = 1
 id = "compose-backend-docker-repo-test"
@@ -195,10 +205,9 @@ sessions = ["backend-workflow"]
 """,
                 encoding="utf-8",
             )
-            (legacy_root / "evidence.md").write_text("# Candidate Evidence\n", encoding="utf-8")
+            (legacy_root / "candidate-facts.toml").write_text("facts_version = 1\n", encoding="utf-8")
             (legacy_root / "draft-capability.contract.toml").write_text("contract_version = 1\n", encoding="utf-8")
             (legacy_root / "draft-instructions.md").write_text("# Draft\n", encoding="utf-8")
-            (legacy_root / "references" / "long-term-memory.md").write_text("# Draft\n", encoding="utf-8")
 
             exit_code = run_candidates(
                 argparse.Namespace(
@@ -270,8 +279,127 @@ sessions = ["backend-workflow"]
                 / "auth-e2e-workflow"
                 / "draft-initialize-kb.md"
             ).read_text(encoding="utf-8")
-            self.assertIn("Candidate evidence: `.governed/candidates/auth-e2e-workflow/evidence.md`", draft_prompt)
+            self.assertIn("Candidate facts: `.governed/candidates/auth-e2e-workflow/candidate-facts.toml`", draft_prompt)
             self.assertIn("Do not store secrets", draft_prompt)
+
+    def test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            first_session = Path(temp_dir) / "auth-stack-one.jsonl"
+            second_session = Path(temp_dir) / "auth-stack-two.jsonl"
+            _write_session(
+                first_session,
+                "auth-stack-one",
+                project_root,
+                "Document the durable auth e2e workflow with backend compose, docker, dotnet test commands, and first login failure checks.",
+            )
+            _write_session(
+                second_session,
+                "auth-stack-two",
+                project_root,
+                "Capture the auth e2e workflow again, including backend ports, compose files, login verification, and playwright checks.",
+            )
+
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=first_session,
+                    )
+                ),
+                0,
+            )
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=second_session,
+                    )
+                ),
+                0,
+            )
+
+            draft_contract = tomllib.loads(
+                (
+                    project_root
+                    / ".governed"
+                    / "candidates"
+                    / "auth-e2e-workflow"
+                    / "draft-capability.contract.toml"
+                ).read_text(encoding="utf-8")
+            )
+            hints = tuple(draft_contract["routing"]["hints"])
+            negatives = tuple(draft_contract["routing"]["negative_hints"])
+            self.assertIn("auth", hints)
+            self.assertIn("e2e", hints)
+            self.assertIn("login", hints)
+            self.assertNotIn("backend", hints)
+            self.assertNotIn("dotnet", hints)
+            self.assertNotIn("auth", negatives)
+            self.assertNotIn("login", negatives)
+            self.assertNotIn("keycloak", negatives)
+            self.assertNotIn("e2e", negatives)
+            self.assertNotIn("playwright", negatives)
+
+    def test_backend_session_does_not_merge_into_existing_auth_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            auth_one = Path(temp_dir) / "auth-workflow-one.jsonl"
+            auth_two = Path(temp_dir) / "auth-workflow-two.jsonl"
+            backend_one = Path(temp_dir) / "backend-workflow-one.jsonl"
+            _write_session(
+                auth_one,
+                "auth-workflow-one",
+                project_root,
+                "Document the durable auth e2e workflow with compose, login checks, Keycloak, and playwright verification.",
+            )
+            _write_session(
+                auth_two,
+                "auth-workflow-two",
+                project_root,
+                "Capture the auth e2e workflow again, including login flow, local URLs, Keycloak, and verification signals.",
+            )
+            _write_session(
+                backend_one,
+                "backend-workflow-one",
+                project_root,
+                "Capture the reusable backend local stack workflow with docker compose, dotnet commands, ports, and backend startup checks.",
+            )
+
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(candidate_action="stage", project_root=project_root, assistant="codex", session_file=auth_one)
+                ),
+                0,
+            )
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(candidate_action="stage", project_root=project_root, assistant="codex", session_file=auth_two)
+                ),
+                0,
+            )
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(candidate_action="stage", project_root=project_root, assistant="codex", session_file=backend_one)
+                ),
+                0,
+            )
+
+            _, auth_candidate = load_candidate(project_root, "auth-e2e-workflow")
+            _, backend_candidate = load_candidate(project_root, "backend-stack-workflow")
+            self.assertEqual(auth_candidate["occurrences"], 2)
+            self.assertEqual(backend_candidate["occurrences"], 1)
+            self.assertEqual(backend_candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
 
     def test_stage_candidate_from_sessions_and_activate_capability(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -339,10 +467,82 @@ sessions = ["backend-workflow"]
                 / "prompts"
                 / "initialize-kb.md"
             ).read_text(encoding="utf-8")
-            self.assertIn("Candidate evidence: `.governed/candidates/workflow-audit/evidence.md`", init_prompt)
+            self.assertIn("Candidate facts: `.governed/candidates/workflow-audit/candidate-facts.toml`", init_prompt)
             self.assertIn("Capability: `workflow-audit`", init_prompt)
+            created_memory = (
+                project_root
+                / ".governed"
+                / "capabilities"
+                / "workflow-audit"
+                / "references"
+                / "long-term-memory.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("Focus this capability on", created_memory)
             _, activated_candidate = load_candidate(project_root, "workflow-audit")
             self.assertEqual(activated_candidate["status"], "activated")
+
+    def test_create_capability_rolls_back_when_generated_contract_is_invalid(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="demo-project", project_name="Demo Project"))
+
+            first_session = Path(temp_dir) / "session-one.jsonl"
+            second_session = Path(temp_dir) / "session-two.jsonl"
+            _write_session(
+                first_session,
+                "session-one",
+                project_root,
+                "Create docs/features/Workflow Audit/business.md and capture reusable review workflow.",
+            )
+            _write_session(
+                second_session,
+                "session-two",
+                project_root,
+                "Update docs/features/Workflow Audit/context.md with the same reusable workflow.",
+            )
+
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=first_session,
+                    )
+                ),
+                0,
+            )
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=second_session,
+                    )
+                ),
+                0,
+            )
+
+            candidate_root = project_root / ".governed" / "candidates" / "workflow-audit"
+            (candidate_root / "draft-capability.contract.toml").write_text(
+                "contract_version = 1\n[capability]\nid = \"workflow-audit\"\n",
+                encoding="utf-8",
+            )
+
+            create_exit = run_create_capability(
+                argparse.Namespace(
+                    capability_id="Workflow Audit",
+                    project_root=project_root,
+                    from_candidate="workflow-audit",
+                )
+            )
+
+            self.assertEqual(create_exit, 1)
+            self.assertFalse((project_root / ".governed" / "capabilities" / "workflow-audit").exists())
+            _, candidate = load_candidate(project_root, "workflow-audit")
+            self.assertEqual(candidate["status"], "ready-for-review")
 
     def test_create_capability_uses_suggested_name_when_candidate_id_is_omitted(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

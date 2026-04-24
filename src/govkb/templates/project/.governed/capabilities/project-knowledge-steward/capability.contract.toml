@@ -42,5 +42,23 @@ sections = [
   "Stable Workflows",
   "Commands And Verification",
   "Repo Conventions",
+  "Code And Docs Map",
+  "Authority Rules",
+  "Candidate Skill Signals",
+]
+
+[bootstrap]
+profile = "steward"
+repo_roots = ["."]
+authority_paths = ["README.md"]
+seed_paths = ["README.md", "docs", "src", "tests"]
+
+[kb_health]
+requires_verification_commands = false
+requires_repo_map = true
+required_sections = [
+  "Project Working Agreement",
+  "Stable Workflows",
+  "Code And Docs Map",
   "Candidate Skill Signals",
 ]

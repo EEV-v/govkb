@@ -43,6 +43,25 @@ class CapabilityTarget:
 
 
 @dataclass(frozen=True)
+class BootstrapConfig:
+    """Contract-driven KB bootstrap configuration."""
+
+    profile: str
+    repo_roots: tuple[str, ...]
+    authority_paths: tuple[str, ...]
+    seed_paths: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class KBHealthConfig:
+    """Contract-driven KB health expectations."""
+
+    requires_verification_commands: bool
+    requires_repo_map: bool
+    required_sections: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class CapabilityContract:
     """Validated capability contract."""
 
@@ -61,6 +80,8 @@ class CapabilityContract:
     migration_source_adapter: str | None
     migration_source_path: Path | None
     migration_status: str | None
+    bootstrap: BootstrapConfig
+    kb_health: KBHealthConfig
     source_path: Path
 
 
@@ -187,6 +208,26 @@ def _validate_relative_path(path_value: str, path: Path, result: ValidationResul
     return path_value
 
 
+def _expect_relative_path_list(
+    value: Any,
+    path: Path,
+    result: ValidationResult,
+    label: str,
+    *,
+    allow_empty: bool = True,
+) -> tuple[str, ...]:
+    values = _expect_list_of_strings(value, path, result, label)
+    validated: list[str] = []
+    for item in values:
+        safe = _validate_relative_path(item, path, result, label)
+        if safe is None:
+            continue
+        validated.append(safe)
+    if not allow_empty and not validated:
+        result.add_error(path, f"{label} must not be empty")
+    return tuple(validated)
+
+
 def _load_project_manifest(path: Path, result: ValidationResult) -> dict[str, Any] | None:
     starting_errors = len(result.errors)
     data = _parse_toml_file(path, result)
@@ -253,7 +294,9 @@ def _load_capability_contract(path: Path, result: ValidationResult) -> Capabilit
     capability = _expect_table(data, "capability", path, result)
     routing = _expect_table(data, "routing", path, result)
     memory = _expect_table(data, "memory", path, result)
-    if capability is None or routing is None or memory is None:
+    bootstrap = _expect_table(data, "bootstrap", path, result)
+    kb_health = _expect_table(data, "kb_health", path, result)
+    if capability is None or routing is None or memory is None or bootstrap is None or kb_health is None:
         return None
 
     capability_id = _expect_string(capability.get("id"), path, result, "capability.id")
@@ -295,7 +338,65 @@ def _load_capability_contract(path: Path, result: ValidationResult) -> Capabilit
                     continue
                 target_items.append(CapabilityTarget(name=name, path=safe_path, sections=sections))
 
-    if capability_id is None or governed is None or memory_enabled is None or auto_apply is None or explicit_acceptance is None:
+    bootstrap_profile = _expect_string(bootstrap.get("profile"), path, result, "bootstrap.profile")
+    if bootstrap_profile is not None and bootstrap_profile not in {"workflow", "steward", "reviewer", "reference"}:
+        result.add_error(path, f"invalid bootstrap.profile: {bootstrap_profile}")
+        bootstrap_profile = None
+    bootstrap_repo_roots = _expect_relative_path_list(
+        bootstrap.get("repo_roots"),
+        path,
+        result,
+        "bootstrap.repo_roots",
+        allow_empty=False,
+    )
+    bootstrap_authority_paths = _expect_relative_path_list(
+        bootstrap.get("authority_paths"),
+        path,
+        result,
+        "bootstrap.authority_paths",
+    )
+    bootstrap_seed_paths = _expect_relative_path_list(
+        bootstrap.get("seed_paths"),
+        path,
+        result,
+        "bootstrap.seed_paths",
+    )
+
+    requires_verification_commands = _expect_bool(
+        kb_health.get("requires_verification_commands"),
+        path,
+        result,
+        "kb_health.requires_verification_commands",
+    )
+    requires_repo_map = _expect_bool(
+        kb_health.get("requires_repo_map"),
+        path,
+        result,
+        "kb_health.requires_repo_map",
+    )
+    required_sections = _expect_list_of_strings(
+        kb_health.get("required_sections"),
+        path,
+        result,
+        "kb_health.required_sections",
+    )
+    if not required_sections:
+        result.add_error(path, "kb_health.required_sections must not be empty")
+    configured_sections = {section for target in target_items for section in target.sections}
+    for section in required_sections:
+        if section not in configured_sections:
+            result.add_error(path, f"kb_health.required_sections references unknown section: {section}")
+
+    if (
+        capability_id is None
+        or governed is None
+        or memory_enabled is None
+        or auto_apply is None
+        or explicit_acceptance is None
+        or bootstrap_profile is None
+        or requires_verification_commands is None
+        or requires_repo_map is None
+    ):
         return None
     if len(result.errors) > starting_errors:
         return None
@@ -349,6 +450,17 @@ def _load_capability_contract(path: Path, result: ValidationResult) -> Capabilit
         migration_source_adapter=migration_source_adapter,
         migration_source_path=migration_source_path,
         migration_status=migration_status,
+        bootstrap=BootstrapConfig(
+            profile=bootstrap_profile,
+            repo_roots=bootstrap_repo_roots,
+            authority_paths=bootstrap_authority_paths,
+            seed_paths=bootstrap_seed_paths,
+        ),
+        kb_health=KBHealthConfig(
+            requires_verification_commands=requires_verification_commands,
+            requires_repo_map=requires_repo_map,
+            required_sections=required_sections,
+        ),
         source_path=path,
     )
 

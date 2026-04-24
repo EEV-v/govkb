@@ -93,6 +93,59 @@ class PromoteCommandTests(unittest.TestCase):
             self.assertEqual(exit_code, 1)
             self.assertEqual(repo_memory.read_text(encoding="utf-8"), original_repo)
 
+    def test_promote_ignores_scaffold_placeholder_bullets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, repo_memory, local_memory = self._scaffold_project(temp_dir)
+            original_repo = repo_memory.read_text(encoding="utf-8")
+            local_memory.write_text(
+                original_repo.rstrip()
+                + "\n- Add authority rules here when one governed file should win over broader docs.\n",
+                encoding="utf-8",
+            )
+
+            exit_code = run_promote(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    assistant="codex",
+                    codex_home=codex_home,
+                    preview=True,
+                    auto=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(repo_memory.read_text(encoding="utf-8"), original_repo)
+
+    def test_promote_allows_append_when_blank_lines_shift(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, repo_memory, local_memory = self._scaffold_project(temp_dir)
+            original_repo = repo_memory.read_text(encoding="utf-8")
+            local_memory.write_text(
+                original_repo.replace(
+                    "- Add stable workflow steps here after bootstrap or repeated evidence.\n\n## Commands And Verification",
+                    "- Add stable workflow steps here after bootstrap or repeated evidence.\n- Prefer the root compose pair for routine local work.\n## Commands And Verification",
+                ),
+                encoding="utf-8",
+            )
+
+            exit_code = run_promote(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    assistant="codex",
+                    codex_home=codex_home,
+                    preview=False,
+                    auto=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(
+                "Prefer the root compose pair for routine local work.",
+                repo_memory.read_text(encoding="utf-8"),
+            )
+
     @unittest.skipIf(shutil.which("git") is None, "git is not installed")
     def test_promote_digest_reports_git_status(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

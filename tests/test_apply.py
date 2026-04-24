@@ -140,6 +140,17 @@ requires_explicit_acceptance = false
 path = "references/long-term-memory.md"
 sections = ["Working Agreement"]
 
+[bootstrap]
+profile = "workflow"
+repo_roots = ["."]
+authority_paths = []
+seed_paths = []
+
+[kb_health]
+requires_verification_commands = true
+requires_repo_map = true
+required_sections = ["Working Agreement"]
+
 [migration]
 source_adapter = "codex"
 source_path = "{legacy_skill_root}"
@@ -190,6 +201,112 @@ status = "legacy-fallback"
             self.assertTrue((codex_home / "skills" / "govkb-second-project-project-knowledge-steward").is_dir())
             self.assertTrue(install_state_path(codex_home, "first-project", "codex").is_file())
             self.assertTrue(install_state_path(codex_home, "second-project", "codex").is_file())
+
+    def test_apply_preserves_local_memory_additions_when_rematerializing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            codex_home = Path(temp_dir) / "codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="demo-project", project_name="Demo Project"))
+
+            first_apply = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="first-pass",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(first_apply, 0)
+
+            steward_memory = (
+                codex_home
+                / "skills"
+                / "govkb-demo-project-project-knowledge-steward"
+                / "references"
+                / "long-term-memory.md"
+            )
+            steward_memory.write_text(
+                steward_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- prefer backend-dotnet/README.md for local stack commands.\n",
+                encoding="utf-8",
+            )
+
+            run_create_capability(argparse.Namespace(capability_id="Workflow Review", project_root=project_root))
+            second_apply = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="second-pass",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(second_apply, 0)
+            self.assertIn(
+                "prefer backend-dotnet/README.md for local stack commands.",
+                steward_memory.read_text(encoding="utf-8"),
+            )
+            self.assertTrue((codex_home / "skills" / "govkb-demo-project-workflow-review").is_dir())
+
+    def test_apply_does_not_preserve_scaffold_placeholder_bullets(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            codex_home = Path(temp_dir) / "codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="demo-project", project_name="Demo Project"))
+
+            first_apply = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="first-pass",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(first_apply, 0)
+
+            repo_memory = (
+                project_root
+                / ".governed"
+                / "capabilities"
+                / "project-knowledge-steward"
+                / "references"
+                / "long-term-memory.md"
+            )
+            repo_memory.write_text(
+                repo_memory.read_text(encoding="utf-8").replace(
+                    "- Add repo-relative code, test, and docs locations here when they are useful beyond one task.",
+                    "- Project docs for this capability live under `docs/`.",
+                ),
+                encoding="utf-8",
+            )
+
+            second_apply = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="second-pass",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(second_apply, 0)
+
+            steward_memory = (
+                codex_home
+                / "skills"
+                / "govkb-demo-project-project-knowledge-steward"
+                / "references"
+                / "long-term-memory.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("Project docs for this capability live under `docs/`.", steward_memory)
+            self.assertNotIn(
+                "Add repo-relative code, test, and docs locations here after they prove reusable across sessions.",
+                steward_memory,
+            )
 
 
 if __name__ == "__main__":

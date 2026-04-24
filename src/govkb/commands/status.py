@@ -7,6 +7,7 @@ from pathlib import Path
 from govkb.core.contracts import load_project_bundle
 from govkb.core.install_state import install_state_path
 from govkb.core.install_state import load_install_state
+from govkb.core.kb_bootstrap import bundle_kb_health_messages
 
 
 def run_status(args) -> int:
@@ -19,6 +20,8 @@ def run_status(args) -> int:
     print(f"Capabilities: {len(bundle.capabilities)}")
     print(f"Adapters: {len(bundle.adapters)}")
     print(f"Releases: {len(bundle.releases)}")
+    for message in result.warnings:
+        print(f"warning: {message.location}: {message.message}")
     if bundle.project_id and args.codex_home:
         state_path = install_state_path(Path(args.codex_home).resolve(), bundle.project_id, "codex")
         state = load_install_state(state_path)
@@ -36,6 +39,14 @@ def run_status(args) -> int:
                 capability_id = capability.get("capability_id", "<unknown>")
                 skill_id = capability.get("materialized_skill_id") or capability_id
                 print(f"- {capability_id} -> {skill_id}")
+    kb_health = bundle_kb_health_messages(bundle.project_root, bundle)
+    if kb_health:
+        print(f"KB health warnings: {len(kb_health)}")
+        for message in kb_health:
+            print(f"- {message.message}")
+        print("Suggested remediation: govkb init-kb --all")
+    else:
+        print("KB health warnings: none")
     if result.errors:
         print(f"Validation status: {len(result.errors)} error(s)")
         return 1

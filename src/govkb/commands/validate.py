@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from govkb.core.contracts import load_project_bundle
+from govkb.core.kb_bootstrap import bundle_kb_health_messages
 
 
 def run_validate(args) -> int:
@@ -19,7 +20,10 @@ def run_validate(args) -> int:
     print(f"Adapters loaded: {len(bundle.adapters)}")
     print(f"Releases loaded: {len(bundle.releases)}")
 
+    kb_health = bundle_kb_health_messages(project_root, bundle)
     for message in result.warnings:
+        print(f"warning: {message.location}: {message.message}")
+    for message in kb_health:
         print(f"warning: {message.location}: {message.message}")
     for message in result.errors:
         print(f"error: {message.location}: {message.message}", file=sys.stderr)

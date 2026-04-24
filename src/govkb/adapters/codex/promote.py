@@ -14,6 +14,7 @@ from govkb.core.install_state import default_codex_home
 from govkb.core.install_state import install_state_path
 from govkb.core.install_state import iso_utc_now
 from govkb.core.install_state import load_install_state
+from govkb.core.memory_scaffold import is_scaffold_bullet
 
 
 @dataclass(frozen=True)
@@ -107,18 +108,20 @@ def _validate_append_only(repo_text: str, local_text: str, allowed_sections: tup
                 return False, f"rejected: non-target section changed: {repo_heading}", ()
             continue
 
-        matcher = difflib.SequenceMatcher(a=repo_lines, b=local_lines, autojunk=False)
+        normalized_repo = [line for line in repo_lines if line.strip()]
+        normalized_local = [line for line in local_lines if line.strip()]
+        matcher = difflib.SequenceMatcher(a=normalized_repo, b=normalized_local, autojunk=False)
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == "equal":
                 continue
             if tag != "insert":
                 return False, f"rejected: existing lines changed in section: {repo_heading}", ()
-            inserted = local_lines[j1:j2]
+            inserted = normalized_local[j1:j2]
             for line in inserted:
                 stripped = line.strip()
                 if stripped and not stripped.startswith("- "):
                     return False, f"rejected: inserted non-bullet line in section: {repo_heading}", ()
-                if stripped:
+                if stripped and not is_scaffold_bullet(stripped):
                     additions.append(stripped)
     if not additions:
         return False, "unchanged", ()

@@ -10,6 +10,7 @@ from govkb.commands.candidates import run_candidates
 from govkb.commands.create_capability import run_create_capability
 from govkb.commands.install import run_install
 from govkb.commands.init import run_init
+from govkb.commands.init_kb import run_init_kb
 from govkb.commands.promote import run_promote
 from govkb.commands.review_memory import run_review_memory
 from govkb.commands.status import run_status
@@ -42,6 +43,12 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser = subparsers.add_parser("validate", help="Validate a project .governed package.")
     validate_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to validate.")
     validate_parser.set_defaults(handler=run_validate)
+
+    init_kb_parser = subparsers.add_parser("init-kb", help="Bootstrap governed capability knowledge base files.")
+    init_kb_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to bootstrap.")
+    init_kb_parser.add_argument("--capability", help="Bootstrap one capability id.")
+    init_kb_parser.add_argument("--all", action="store_true", help="Bootstrap all governed capabilities.")
+    init_kb_parser.set_defaults(handler=run_init_kb)
 
     apply_parser = subparsers.add_parser("apply", help="Materialize governed content into an assistant target.")
     apply_subparsers = apply_parser.add_subparsers(dest="assistant", required=True)
@@ -115,6 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     capability_parser.add_argument("capability_id", nargs="?", help="Capability id to scaffold. Optional with --from-candidate.")
     capability_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
     capability_parser.add_argument("--from-candidate", help="Create the capability from a staged candidate id.")
+    capability_parser.add_argument("--no-init-kb", action="store_true", help="Skip automatic KB bootstrap when creating from candidate.")
     capability_parser.set_defaults(handler=run_create_capability)
 
     return parser

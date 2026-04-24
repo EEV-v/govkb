@@ -16,6 +16,14 @@
 
 - Add project-specific conventions here when they affect how future work should be done.
 
+## Code And Docs Map
+
+- Add repo-relative code, test, and docs locations here when they are useful beyond one task.
+
+## Authority Rules
+
+- Add authority rules here when one governed file should win over broader docs.
+
 ## Candidate Skill Signals
 
 - Track repeated specialized work as a candidate governed capability instead of expanding this broad steward indefinitely.

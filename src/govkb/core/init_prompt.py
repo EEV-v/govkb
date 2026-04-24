@@ -20,11 +20,11 @@ def initialize_kb_prompt_text(
             [
                 f"- Candidate: `{candidate_id}`",
                 f"- Candidate metadata: `.governed/candidates/{candidate_id}/candidate.toml`",
-                f"- Candidate evidence: `.governed/candidates/{candidate_id}/evidence.md`",
+                f"- Candidate facts: `.governed/candidates/{candidate_id}/candidate-facts.toml`",
             ]
         )
     else:
-        candidate_lines.append("- Candidate evidence: none; initialize only from the current contract and repo facts.")
+        candidate_lines.append("- Candidate facts: none; initialize only from the current contract and repo facts.")
 
     summary_lines: list[str] = []
     if summary:
@@ -44,7 +44,7 @@ def initialize_kb_prompt_text(
         + ("\n".join(summary_lines) + "\n" if summary_lines else "")
         + "\n"
         "## Task\n\n"
-        "1. Read the capability contract, instructions, current memory, and candidate evidence if it exists.\n"
+        "1. Read the capability contract, instructions, current memory, and candidate facts if they exist.\n"
         "2. Inspect only repo files directly needed to verify stable facts for this capability.\n"
         "3. Append the minimal durable KB entries that will improve future sessions.\n"
         "4. Keep each entry short, reusable, and scoped to this capability.\n"
