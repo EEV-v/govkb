@@ -1,0 +1,52 @@
+contract_version = 1
+
+[capability]
+id = "clearing-qa-on-staging"
+name = "clearing-qa-on-staging"
+governed = true
+description = "Repeatable Clearing feature QA workflow for staging and localhost staging rehearsals with consistent runbooks, evidence folders, API/UI verification, scheduler safety checks, and practical sign-off artifacts. Use when asked to QA a deployed feature on staging, prepare or rehearse staging QA on localhost, gather screenshots and evidence for signoff, or turn an ad hoc staging/local validation into reusable artifacts under Clearing-docs/docs/features."
+
+[routing]
+aliases = [
+  "$clearing-qa-on-staging",
+  "clearing qa on staging",
+  "clearing-qa-on-staging"
+]
+hints = [
+  "api/ui verification",
+  "clearing qa on staging",
+  "evidence folders",
+  "evidence for signoff",
+  "gather screenshots",
+  "localhost staging rehearsals with consistent runbooks",
+  "practical sign-off artifacts",
+  "qa a deployed feature on staging",
+  "rehearse staging qa on localhost",
+  "repeatable clearing feature qa workflow for staging",
+  "scheduler safety checks"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-qa-on-staging"
+status = "poc-dry-run"

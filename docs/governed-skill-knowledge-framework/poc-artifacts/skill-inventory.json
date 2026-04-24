@@ -1,0 +1,719 @@
+{
+  "skills": [
+    {
+      "description": "\"Generate or edit raster images when the task benefits from AI-created bitmap visuals such as photos, illustrations, textures, sprites, mockups, or transparent-background cutouts. Use when Codex should create a brand-new image, transform an existing image, or derive visual variants from references, and the output should be a bitmap asset rather than repo-native code or vector. Do not use when the task is better handled by editing existing SVG/vector/code-native assets, extending an established icon or logo system, or building the visual directly in HTML/CSS/canvas.\"",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "\"imagegen\"",
+      "proposed_contract": null,
+      "reasons": [
+        "system skill is assistant/runtime owned"
+      ],
+      "reference_files": [
+        "references/cli.md",
+        "references/codex-network.md",
+        "references/image-api.md",
+        "references/prompting.md",
+        "references/sample-prompts.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/image_gen.py"
+      ],
+      "skill_id": ".system/imagegen",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/.system/imagegen",
+      "track": "adapter-local only"
+    },
+    {
+      "description": "\"Use when the user asks how to build with OpenAI products or APIs and needs up-to-date official documentation with citations, help choosing the latest model for a use case, or explicit GPT-5.4 upgrade and prompt-upgrade guidance; prioritize OpenAI docs MCP tools, use bundled references only as helper context, and restrict any fallback browsing to official OpenAI domains.\"",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "\"openai-docs\"",
+      "proposed_contract": null,
+      "reasons": [
+        "system skill is assistant/runtime owned"
+      ],
+      "reference_files": [
+        "references/gpt-5p4-prompting-guide.md",
+        "references/latest-model.md",
+        "references/upgrading-to-gpt-5p4.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": ".system/openai-docs",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/.system/openai-docs",
+      "track": "adapter-local only"
+    },
+    {
+      "description": "Create and scaffold plugin directories for Codex with a required `.codex-plugin/plugin.json`, optional plugin folders/files, and baseline placeholders you can edit before publishing or testing. Use when Codex needs to create a new local plugin, add optional plugin structure, or generate or update repo-root `.agents/plugins/marketplace.json` entries for plugin ordering and availability metadata.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "plugin-creator",
+      "proposed_contract": null,
+      "reasons": [
+        "system skill is assistant/runtime owned"
+      ],
+      "reference_files": [
+        "references/plugin-json-spec.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/create_basic_plugin.py"
+      ],
+      "skill_id": ".system/plugin-creator",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/.system/plugin-creator",
+      "track": "adapter-local only"
+    },
+    {
+      "description": "Guide for creating effective skills. This skill should be used when users want to create a new skill (or update an existing skill) that extends Codex's capabilities with specialized knowledge, workflows, or tool integrations.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "skill-creator",
+      "proposed_contract": null,
+      "reasons": [
+        "system skill is assistant/runtime owned"
+      ],
+      "reference_files": [
+        "references/openai_yaml.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/generate_openai_yaml.py",
+        "scripts/init_skill.py",
+        "scripts/quick_validate.py"
+      ],
+      "skill_id": ".system/skill-creator",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/.system/skill-creator",
+      "track": "adapter-local only"
+    },
+    {
+      "description": "Install Codex skills into $CODEX_HOME/skills from a curated list or a GitHub repo path. Use when a user asks to list installable skills, install a curated skill, or install a skill from another repo (including private repos).",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": false,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "skill-installer",
+      "proposed_contract": null,
+      "reasons": [
+        "system skill is assistant/runtime owned"
+      ],
+      "reference_files": [],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/github_utils.py",
+        "scripts/install-skill-from-github.py",
+        "scripts/list-skills.py"
+      ],
+      "skill_id": ".system/skill-installer",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/.system/skill-installer",
+      "track": "adapter-local only"
+    },
+    {
+      "description": "Reconcile a Clearing bugfix folder with Azure DevOps and Monday after the fix is implemented and `release-notes.md` exists. Use when Codex needs to find or create matching Azure and Monday items, inspect Monday updates for ambiguous matches, update the `release-notes.md` tracking section with Azure and Monday references, wire the Monday `ETNA Azure Ticket` column to the final Azure bug, and optionally post release-note comments back to Azure and Monday in one guided apply flow.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "clearing-azure-monday-artifact-sync",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/decision-rules.md",
+        "references/local-artifact-conventions.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/__pycache__/reconcile_bugfix_delivery.cpython-312.pyc",
+        "scripts/reconcile_bugfix_delivery.py"
+      ],
+      "skill_id": "clearing-azure-monday-artifact-sync",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-azure-monday-artifact-sync",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "End-to-end bugfix workflow for the Clearing monorepo using BUGFIX_COOKBOOK prompts, artifact gates, DB/log evidence, and delivery closure. Use when asked to reproduce a bug, diagnose root cause, confirm findings with evidence, plan/implement a fix, verify outcomes, write bugfix release notes under Clearing-docs/docs/bugfixes, or close bugfix delivery with Azure DevOps, Monday, and 7pace linkage.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/LONG_TERM_MEMORY.md"
+      ],
+      "name": "clearing-bugfixer",
+      "proposed_contract": "proposed-contracts/clearing-bugfixer/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "project workflow knowledge keeper"
+      ],
+      "reference_files": [
+        "references/BUGFIX_COOKBOOK.MD",
+        "references/BUGFIX_RELEASE_NOTES_TEMPLATE.MD",
+        "references/BUG_FIX_PLAN_PROMPT.MD",
+        "references/BUG_IMPLEMENT_PROMPT.MD",
+        "references/BUG_REPRO_PROMPT.MD",
+        "references/BUG_ROOT_CAUSE_CONFIRM_PROMPT.MD",
+        "references/BUG_ROOT_CAUSE_PROMPT.MD",
+        "references/BUG_VERIFY_PROMPT.MD",
+        "references/DB_INVESTIGATION_CONTEXT.MD",
+        "references/LONG_TERM_MEMORY.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-bugfixer",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-bugfixer",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Governed DB investigation workflow for Clearing MCP query tools with mandatory audit artifacts and read-only-by-default execution. Use when running PostgreSQL, MongoDB, or MSSQL queries for bugfix evidence, incident response, data verification, or operational investigations where every DB interaction must be auditable and data modification requires explicit confirmation.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-db-audit-guard",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/ARTIFACT_CONTRACT.MD",
+        "references/PROMPT_TEMPLATE.MD"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-db-audit-guard",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-db-audit-guard",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Guided workflow for Clearing Azure DevOps, Adelphi Azure deployment pipelines and builds, 7pace, and Monday delivery operations. Use when Codex needs to inspect, find, create, or update Azure work items with the scripts under Clearing-docs/scripts/azure, trace commits from work items, walk epic hierarchies, update descriptions or comments, inspect Adelphi Azure projects, pipelines, runs, or builds, deploy a branch to staging, retry or re-queue failed deploy builds with corrected flags such as Force Alfa Deploy, preview or post 7pace Timehub worklogs with Clearing-docs/scripts/timehub/log_7pace_worklog.py, query or update Monday items with the scripts under Clearing-docs/scripts/monday, analyze FebruaryBudget or Monday exports for usage, budget, billing, code-review, or sign-off questions, or audit delivery artifacts such as specs, test output, approve letters, and release notes.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-devops-delivery",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/adelphi-azure-deployments.md",
+        "references/script-and-data-map.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-devops-delivery",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-devops-delivery",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "End-to-end feature delivery workflow for the Clearing codebase from business requirements through PoC, implementation, and sign-off artifacts. Use when asked to create or execute feature planning docs, BDD use-cases, PoC packages, implementation plans/reviews, test scaffolds, implementation phases, release notes, stakeholder presentations, or sign-off documents based on the cookbook in Clearing-docs/docs/COOKBOOK.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-feature-cookbook",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/CONTEXT_PROMPT.md",
+        "references/COOKBOOK.MD",
+        "references/IMPLEMENT_PROMPT.MD",
+        "references/IMPL_PLAN_PROMPT.MD",
+        "references/IMPL_PLAN_REVIEW_PROMPT.MD",
+        "references/RELEASE-NOTES-TEMPLATE.MD",
+        "references/SIGN-OFF-TEMPLATE.MD",
+        "references/STAKEHOLDER-PRESENTATION-TEMPLATE.MD",
+        "references/TEST_SCAFFOLD_PROMPT.MD",
+        "references/USE_CASES_FOCUSED_PROMPT.MD"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-feature-cookbook",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-cookbook",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Generate or revise `estimates.md` for a Clearing feature from `context.md`, `business.md`, and `implementation-plan.md`. Use when Codex needs to create a first-pass feature estimate, keep the estimate aligned to the accepted DividendRounding format, manage estimate feedback rounds under `estimate-rounds/`, or update estimator long-term memory only after explicit user acceptance.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-feature-estimator",
+      "proposed_contract": "proposed-contracts/clearing-feature-estimator/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "project workflow knowledge keeper"
+      ],
+      "reference_files": [
+        "references/estimation-rubric.md",
+        "references/format-example.md",
+        "references/long-term-memory.md"
+      ],
+      "requires_explicit_acceptance": true,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-feature-estimator",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-estimator",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Maintain `open-questions.md` and `decision-log.md` for a Clearing feature during business-spec convergence. Use when Codex needs to extract unresolved questions from `business.md` and reviewed rounds, preserve existing statuses, and keep decision candidates separate from questions.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": false,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-feature-question-manager",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-feature-question-manager",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-question-manager",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Compare a Clearing feature's canonical `business.md` with a returned reviewed snapshot or feedback file, preserve the source under `review-rounds/`, and generate both a classified round diff and reconciliation surface. Use when business sends back updated documentation or comments and Codex needs to prepare the reconciliation surface before updating the canonical draft.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": false,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-feature-review-diff",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [
+        "looks project-domain but has no durable memory file yet"
+      ],
+      "script_files": [],
+      "skill_id": "clearing-feature-review-diff",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-review-diff",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Generate business-facing review materials for a Clearing feature from the canonical spec artifacts. Use when Codex needs to create or refresh `business-review-pack.md` and `business-review-message.md` and keep the wording concise, decision-oriented, and aligned with tracker readiness.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": false,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-feature-review-pack",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [
+        "looks project-domain but has no durable memory file yet"
+      ],
+      "script_files": [],
+      "skill_id": "clearing-feature-review-pack",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-review-pack",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Run the pre-implementation business-spec convergence workflow for a Clearing feature. Use when Codex needs to ground spec work in business-domain context, project knowledge base, and `context.md`, treat the initial `business.md` as the starting draft, preserve reviewed-version return files as immutable review inputs, update canonical `business.md` only after reviewed reconciliation confirms it, enforce Azure and Monday tracker sync before business review, generate `business-context.md`, `context.md`, `spec-brief.md`, `open-questions.md`, `decision-log.md`, `business-review-pack.md`, reviewed-round diffs, shared spec knowledge-base updates, `hours-tracking.md`, `scope-lock.md`, and `spec-handoff.md`, then hand off into the engineering feature cookbook.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-feature-spec-cookbook",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/BUSINESS_CONTEXT_PRECONDITION.md",
+        "references/PROJECT_KB.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-feature-spec-cookbook",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-spec-cookbook",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Resolve and maintain spec-phase Azure and Monday linkage for a Clearing feature. Use when Codex needs to find or create the Monday spec item and Azure Feature, inspect ambiguous Monday candidates, update local tracking references, and wire Monday `ETNA Azure Ticket` to the Azure Feature before business review starts.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": false,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "clearing-feature-tracker-sync",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-feature-tracker-sync",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-feature-tracker-sync",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Clearing Keycloak staging debugging and administration workflow. Use when Codex needs to inspect or troubleshoot Clearing Keycloak realms, obtain or validate staging bearer tokens, inspect private client credentials such as funding/clearing service clients, diagnose 401/403 API responses, inspect JWT roles, find service-account users, or manage staging user/group realm-role assignments safely, including creating realm roles and granting them to the staging Admin group.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "clearing-keycloak-debug",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/staging-keycloak.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/kc_admin.py",
+        "scripts/kc_token_probe.py"
+      ],
+      "skill_id": "clearing-keycloak-debug",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-keycloak-debug",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Master review orchestrator for the Clearing codebase. Use when Codex needs to inspect a change set or review artifact, including implementation plans created by the Clearing feature cookbook, identify impacted business and technical areas, select and run the right flow-specific or cross-cutting reviewers, create missing reviewer skills when needed, reconcile overlapping or conflicting feedback, manage repository review best practices, run a retrospective, update long-term memory for the master and child reviewers, and convert the result into a concise executive-summary review with prioritized P0-P3 recommendations.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-master-reviewer",
+      "proposed_contract": "proposed-contracts/clearing-master-reviewer/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "project workflow knowledge keeper"
+      ],
+      "reference_files": [
+        "references/MASTER_SKILL_REVIEW_PROMPT.md",
+        "references/long-term-memory.md",
+        "references/shared-kb.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-master-reviewer",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-master-reviewer",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Query Clearing-related OpenSearch/OpenSearch Dashboards logs in prod or staging through the read-only Dashboards proxy. Use when investigating bugs, incidents, or operational anomalies and you need log evidence for Clearing API, Fix Gateway, Funding, or Corporate Actions, especially during clearing-bugfixer workflows or when building evidence folders under Clearing-docs.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "clearing-opensearch-log-query",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/bug-investigation-flow.md",
+        "references/index-patterns.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/query_logs.py"
+      ],
+      "skill_id": "clearing-opensearch-log-query",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-opensearch-log-query",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Safely replay production incident data into staging or disposable local integration-test databases for behavior verification using auditable MCP DB queries, dependency-complete extraction, PK/FK-safe ID remapping, and staged/local load validation. Use for incident reproduction, regression verification, or data-backed QA where production data must be copied to a proven non-production target without breaking constraints.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [],
+      "name": "clearing-prod-to-staging-replay",
+      "proposed_contract": null,
+      "reasons": [
+        "project-specific skill without first-wave memory evidence",
+        "keep operationally available until contract parity is proven"
+      ],
+      "reference_files": [
+        "references/DB_DATA_NOTES.md",
+        "references/ENTITY_KNOWLEDGE_BASE_TEMPLATE.md",
+        "references/ID_REMAP_RULES.md",
+        "references/REPLAY_MANIFEST_TEMPLATE.yaml",
+        "references/SQL_PLAYBOOK_POSTGRES.md",
+        "references/WORKFLOW_CHECKLIST.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/init_replay_workspace.sh",
+        "scripts/upsert_entity_kb.py"
+      ],
+      "skill_id": "clearing-prod-to-staging-replay",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-prod-to-staging-replay",
+      "track": "legacy keep until migrated"
+    },
+    {
+      "description": "Repeatable Clearing feature QA workflow for staging and localhost staging rehearsals with consistent runbooks, evidence folders, API/UI verification, scheduler safety checks, and practical sign-off artifacts. Use when asked to QA a deployed feature on staging, prepare or rehearse staging QA on localhost, gather screenshots and evidence for signoff, or turn an ad hoc staging/local validation into reusable artifacts under Clearing-docs/docs/features.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": true,
+      "memory_files": [
+        "references/LONG_TERM_MEMORY.md"
+      ],
+      "name": "clearing-qa-on-staging",
+      "proposed_contract": "proposed-contracts/clearing-qa-on-staging/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "project workflow knowledge keeper"
+      ],
+      "reference_files": [
+        "references/LONG_TERM_MEMORY.md",
+        "references/artifact-standard.md",
+        "references/retrospective-template.md",
+        "references/staging-source-mutation.md",
+        "references/staging-tooling.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [
+        "scripts/__pycache__/scaffold_staging_qa.cpython-312.pyc",
+        "scripts/scaffold_staging_qa.py"
+      ],
+      "skill_id": "clearing-qa-on-staging",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-qa-on-staging",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Reviewer for realtime cashflow reconciliation, cashflow report statements, manual and suggested matching flows, and related persistence, contract, and ops-control behavior in the Clearing codebase. Use when changes or implementation plans touch cashflow reports, cash reconciliation statements, reconciliation suggestion logic, unmatched/reconciled state transitions, or tests and docs that define these flows.",
+      "has_agents": false,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-review-cashflow-reconciliation",
+      "proposed_contract": "proposed-contracts/clearing-review-cashflow-reconciliation/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "reviewer capability with project-domain routing"
+      ],
+      "reference_files": [
+        "references/context-sources.md",
+        "references/long-term-memory.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-review-cashflow-reconciliation",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-review-cashflow-reconciliation",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Reviewer for corporate-action import/classification, processor-family routing, approval and apply gates, and CAS list/detail contract behavior in the Clearing codebase. Use when changes or implementation plans touch `FetchCorporateActionsJob`, `CorporateActionService`, `CorporateActionHandler`, dividend approval flows, CAS DTOs and projections, upstream corporate-action client contracts, or CAS UI list/detail rendering.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-review-corporate-actions-processing",
+      "proposed_contract": "proposed-contracts/clearing-review-corporate-actions-processing/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "reviewer capability with project-domain routing"
+      ],
+      "reference_files": [
+        "references/context-sources.md",
+        "references/long-term-memory.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-review-corporate-actions-processing",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-review-corporate-actions-processing",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Reviewer for governed internal-account creation and activation, internal account metadata and numbering, audit and authorization controls, selective OMS/SOD sync, and downstream internal-account reference behavior in the Clearing codebase. Use when changes or implementation plans touch `AccountController`, `AccountService`, `AccountRepository`, `AccountOpeningService` numbering logic, `EtnaSodHandler`, Accounts UI internal-account flows, or config-to-account reference migration for internal master accounts.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-review-internal-account-governance",
+      "proposed_contract": "proposed-contracts/clearing-review-internal-account-governance/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "reviewer capability with project-domain routing"
+      ],
+      "reference_files": [
+        "references/context-sources.md",
+        "references/long-term-memory.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-review-internal-account-governance",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-review-internal-account-governance",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Reviewer for Golden Security, legacy security lookup compatibility, DTCC security-master integration, canonical identifier rules, and related resolver or DTO changes in the Clearing codebase. Use when changes or implementation plans touch Golden Security tables or repositories, `SecurityRepository`, DTCC security master lookup seams, identifier-resolution contracts, or additive security-master fields on downstream DTOs.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-review-security-master",
+      "proposed_contract": "proposed-contracts/clearing-review-security-master/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "reviewer capability with project-domain routing"
+      ],
+      "reference_files": [
+        "references/context-sources.md",
+        "references/long-term-memory.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-review-security-master",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-review-security-master",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Reviewer for TransactionLot creation, execution-venue ingestion, and transaction-lot reconciliation flows in the Clearing codebase. Use when changes or implementation plans touch TransactionLot APIs, service or repository logic, execution or commission ingestion, position-lot linkage, UTC or trade-blotter matching, DTCC or execution-venue reconciliation flows, or tests and docs that define these behaviors.",
+      "has_agents": true,
+      "has_memory": true,
+      "has_references": true,
+      "has_scripts": false,
+      "memory_files": [
+        "references/long-term-memory.md"
+      ],
+      "name": "clearing-review-transaction-lots-reconciliation",
+      "proposed_contract": "proposed-contracts/clearing-review-transaction-lots-reconciliation/capability.contract.toml",
+      "reasons": [
+        "has durable memory file",
+        "reviewer capability with project-domain routing"
+      ],
+      "reference_files": [
+        "references/context-sources.md",
+        "references/long-term-memory.md"
+      ],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "clearing-review-transaction-lots-reconciliation",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/clearing-review-transaction-lots-reconciliation",
+      "track": "governed capability now"
+    },
+    {
+      "description": "Draft, rewrite, or review Slack messages, thread replies, rollout notes, implementation summaries, and short technical docs in a specific author's real working style rather than generic assistant prose. Use when Codex needs to mimic a target engineer/operator voice from supplied corpus files, Slack exports, pasted authored messages, or an explicit style brief; preserve facts, mentions, links, owners, statuses, and technical precision; and produce terse, implementation-first writing in English, Russian, or mixed language.",
+      "has_agents": true,
+      "has_memory": false,
+      "has_references": false,
+      "has_scripts": false,
+      "memory_files": [],
+      "name": "ev-style-writer",
+      "proposed_contract": null,
+      "reasons": [
+        "not project-specific Clearing knowledge"
+      ],
+      "reference_files": [],
+      "requires_explicit_acceptance": false,
+      "risk_notes": [],
+      "script_files": [],
+      "skill_id": "ev-style-writer",
+      "source_path": "/mnt/c/Users/Ev/.codex/skills/ev-style-writer",
+      "track": "adapter-local only"
+    }
+  ],
+  "summary": {
+    "approval_gated_skills": 1,
+    "generated_contracts": 9,
+    "inventory_sha256": "cb782540cf1f2812863d4a5bdfd04f1bffcb7288b0b076e7691154830ba9fb67",
+    "memory_bearing_skills": 9,
+    "output_dir": "/home/ev/code/Clearing/Clearing-docs/docs/features/Governed Skill Knowledge Framework/poc-artifacts",
+    "run_at_utc": "2026-04-21T20:46:00Z",
+    "skills_root": "/mnt/c/Users/Ev/.codex/skills",
+    "total_skills": 27,
+    "tracks": {
+      "adapter-local only": 6,
+      "governed capability now": 9,
+      "legacy keep until migrated": 12
+    },
+    "validation_errors": [],
+    "validation_status": "passed"
+  }
+}

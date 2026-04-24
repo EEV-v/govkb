@@ -1,0 +1,52 @@
+contract_version = 1
+
+[capability]
+id = "clearing-review-cashflow-reconciliation"
+name = "clearing-review-cashflow-reconciliation"
+governed = true
+description = "Reviewer for realtime cashflow reconciliation, cashflow report statements, manual and suggested matching flows, and related persistence, contract, and ops-control behavior in the Clearing codebase. Use when changes or implementation plans touch cashflow reports, cash reconciliation statements, reconciliation suggestion logic, unmatched/reconciled state transitions, or tests and docs that define these flows."
+
+[routing]
+aliases = [
+  "$clearing-review-cashflow-reconciliation",
+  "clearing review cashflow reconciliation",
+  "clearing-review-cashflow-reconciliation"
+]
+hints = [
+  "cash reconciliation statements",
+  "cashflow report statements",
+  "clearing review cashflow reconciliation",
+  "docs that define these flows",
+  "implementation plans touch cashflow reports",
+  "ops-control behavior in the clearing codebase",
+  "reconciliation suggestion logic",
+  "related persistence",
+  "reviewer for realtime cashflow reconciliation",
+  "suggested matching flows",
+  "unmatched/reconciled state transitions"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-review-cashflow-reconciliation"
+status = "poc-dry-run"

@@ -1,0 +1,18 @@
+# Decision Log — Governed Skill Knowledge Framework
+
+Last updated: 2026-04-22
+
+| ID | Decision / Candidate | Status | Owner | Source | Notes |
+|---|---|---|---|---|---|
+| D1 | The governed framework must be capability-agnostic and must not depend on a hardcoded project skill list such as `KEYWORD_SKILL_HINTS`. | Approved | Engineering | business.md | This is the core architecture change. |
+| D2 | The project source of truth lives in git under `<project-root>/.governed/`. | Approved | Engineering | business.md, context.md | Project-only knowledge must not be constrained by Codex-local skill packaging. |
+| D3 | Governed capabilities will declare a machine-readable contract in `<project-root>/.governed/capabilities/<capability_id>/capability.contract.toml`. | Approved | Engineering | business.md, context.md | TOML is chosen so Python can parse contracts via `tomllib` without a new runtime dependency. |
+| D4 | Assistant adapters are materialization targets under `<project-root>/.governed/adapters/<assistant>/...`; Codex is the first live adapter. | Approved | Engineering | business.md, context.md | This keeps the repo model portable across Codex, Claude, and Copilot. |
+| D5 | Governed release/install manifests are tracked in git and drive local `govkb apply codex` flows per release or revision for the first live adapter. | Approved | Engineering | business.md, context.md | This makes local assistant setup a governed output of the repo, not a hand-maintained local state. |
+| D6 | Adapter materialization may add constraints, routing aliases, and local file projection, but it may not weaken project governance. | Approved | Engineering | business.md, context.md | Resolved with monotonic merge rules: stricter policy wins. |
+| D7 | The first increment keeps the current Codex scheduler, report model, and state model, and extends them as the first adapter rather than replacing them. | Approved | Engineering | business-context.md, context.md | Existing operational behavior is already good enough to reuse. |
+| D8 | Invalid or conflicting contracts must degrade the affected capability or adapter only and surface as run-health warnings rather than silently falling through. | Approved | Engineering | context.md | Contract issues must be visible but not catastrophic to unrelated capabilities. |
+| D9 | Overriding the default skill creator, bulk-retrofitting the remaining skills, and shipping fully working Claude/Copilot adapters are follow-up phases, not part of the locked first delivery. | Approved | Engineering | business.md | The framework must support those phases, but they are not required now. |
+| D10 | `.governed/` remains the repo package folder and governed terminology remains the contract language; `govkb` is the CLI/app alias for operator commands. | Approved | Engineering | user decision, business.md | This keeps the source package editor/assistant-agnostic while giving the CLI a shorter concrete command name. |
+| D11 | The MVP must prove self-improving project AI knowledge, not only config migration: real work can grow existing governed capability expertise, repeated unmatched work can stage new capability candidates, and promoted learning can be redistributed through `govkb apply codex`. | Approved | Engineering | business.md, use-cases.md | This is the product north star; exact token or chatbot cost reduction is measured after reuse quality is proven. |
+| D12 | Brand-new governed capability activation is review-gated in the first increment; the system may stage candidates automatically but must not activate them from a single session. | Approved | Engineering | business.md, context.md | This preserves the growth-in-number goal without allowing noisy skill sprawl. |

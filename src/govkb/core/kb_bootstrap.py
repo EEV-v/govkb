@@ -426,15 +426,19 @@ def _facts_from_dotnet(project_root: Path, path: Path, section_aliases: dict[str
     facts: list[tuple[str, str]] = []
     repo_map_section = section_aliases.get("repo_map")
     commands_section = section_aliases.get("commands")
+    workflows_section = section_aliases.get("workflows")
     relative = _relpath(project_root, path)
     if repo_map_section is not None and path.suffix == ".sln":
         facts.append((repo_map_section, f"Dotnet solution entrypoint for this capability is `{relative}`."))
     if path.suffix == ".csproj" and repo_map_section is not None and "test" not in path.stem.lower():
         facts.append((repo_map_section, f"Relevant dotnet project file for this capability is `{relative}`."))
-    if commands_section is None:
-        return tuple(facts)
     if path.suffix == ".csproj" and "test" in path.stem.lower():
-        facts.append((commands_section, f"Use `dotnet test {relative} --no-restore` for targeted verification."))
+        if workflows_section is not None:
+            facts.append((workflows_section, f"Primary .NET verification workflow for this capability runs through `{relative}`."))
+        if commands_section is not None:
+            facts.append((commands_section, f"Use `dotnet test {relative} --no-restore` for targeted verification."))
+        return tuple(facts)
+    if commands_section is None:
         return tuple(facts)
     if path.suffix == ".sln":
         test_projects = sorted(search_root.rglob("*.csproj"))

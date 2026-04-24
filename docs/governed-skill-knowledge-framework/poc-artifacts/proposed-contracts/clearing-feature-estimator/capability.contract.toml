@@ -1,0 +1,46 @@
+contract_version = 1
+
+[capability]
+id = "clearing-feature-estimator"
+name = "clearing-feature-estimator"
+governed = true
+description = "Generate or revise `estimates.md` for a Clearing feature from `context.md`, `business.md`, and `implementation-plan.md`. Use when Codex needs to create a first-pass feature estimate, keep the estimate aligned to the accepted DividendRounding format, manage estimate feedback rounds under `estimate-rounds/`, or update estimator long-term memory only after explicit user acceptance."
+
+[routing]
+aliases = [
+  "$clearing-feature-estimator",
+  "clearing feature estimator",
+  "clearing-feature-estimator"
+]
+hints = [
+  "clearing feature estimator",
+  "create a first-pass feature estimate",
+  "manage estimate feedback rounds under `estimate-rounds/`",
+  "md` for a clearing feature from `context",
+  "revise `estimates"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = true
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-feature-estimator"
+status = "poc-dry-run"

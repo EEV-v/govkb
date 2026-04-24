@@ -1,0 +1,17 @@
+{
+  "approval_gated_skills": 1,
+  "generated_contracts": 9,
+  "inventory_sha256": "cb782540cf1f2812863d4a5bdfd04f1bffcb7288b0b076e7691154830ba9fb67",
+  "memory_bearing_skills": 9,
+  "output_dir": "/home/ev/code/Clearing/Clearing-docs/docs/features/Governed Skill Knowledge Framework/poc-artifacts",
+  "run_at_utc": "2026-04-21T20:46:00Z",
+  "skills_root": "/mnt/c/Users/Ev/.codex/skills",
+  "total_skills": 27,
+  "tracks": {
+    "adapter-local only": 6,
+    "governed capability now": 9,
+    "legacy keep until migrated": 12
+  },
+  "validation_errors": [],
+  "validation_status": "passed"
+}

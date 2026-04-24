@@ -282,6 +282,85 @@ sessions = ["backend-workflow"]
             self.assertIn("Candidate facts: `.governed/candidates/auth-e2e-workflow/candidate-facts.toml`", draft_prompt)
             self.assertIn("Do not store secrets", draft_prompt)
 
+    def test_stage_candidate_uses_semantic_seed_for_id_scope_and_repo_facts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            session_path = Path(temp_dir) / "delivery-note.jsonl"
+            _write_session(
+                session_path,
+                "delivery-note",
+                project_root,
+                "Please summarize the work we just did and think about future reuse.",
+            )
+            seed_path = Path(temp_dir) / "semantic-seed.json"
+            seed_path.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "release-validation-workflow",
+                        "default_capability_id": "release-validation-workflow",
+                        "summary": "Repeated release validation work may need a dedicated governed capability.",
+                        "routing_hints": ["release validation", "qa signoff", "smoke checks"],
+                        "scope_summary": "Release validation workflow, signoff checkpoints, and stable smoke-test evidence.",
+                        "in_scope": [
+                            "stable pre-release smoke checks and signoff evidence",
+                            "durable commands and repo paths used for release validation",
+                        ],
+                        "out_of_scope": [
+                            "feature implementation details unrelated to release validation",
+                        ],
+                        "facts": [
+                            {
+                                "section": "Commands And Verification",
+                                "fact": "Use dotnet test src/tests/ReleaseChecks/ReleaseChecks.csproj --no-restore before signoff.",
+                                "confidence": 0.93,
+                                "repo_paths": ["src/tests/ReleaseChecks/ReleaseChecks.csproj"],
+                                "grouping_key": "release-check-command",
+                            },
+                            {
+                                "section": "Code And Docs Map",
+                                "fact": "Keep release notes in docs/release/release-notes.md and smoke-check evidence in docs/release/checklist.md.",
+                                "confidence": 0.88,
+                                "repo_paths": ["docs/release/release-notes.md", "docs/release/checklist.md"],
+                            },
+                        ],
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            exit_code = run_candidates(
+                argparse.Namespace(
+                    candidate_action="stage",
+                    project_root=project_root,
+                    assistant="codex",
+                    session_file=session_path,
+                    semantic_seed_file=seed_path,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            _, candidate = load_candidate(project_root, "release-validation-workflow")
+            self.assertEqual(candidate["proposal"]["capability_id"], "release-validation-workflow")
+            self.assertEqual(
+                candidate["scope"]["summary"],
+                "Release validation workflow, signoff checkpoints, and stable smoke-test evidence.",
+            )
+            facts_text = (
+                project_root
+                / ".governed"
+                / "candidates"
+                / "release-validation-workflow"
+                / "candidate-facts.toml"
+            ).read_text(encoding="utf-8")
+            self.assertIn('repo_paths = ["src/tests/ReleaseChecks/ReleaseChecks.csproj"]', facts_text)
+            self.assertIn('docs/release/release-notes.md', facts_text)
+            self.assertNotIn("Please summarize the work we just did", facts_text)
+
     def test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "ExampleApp"

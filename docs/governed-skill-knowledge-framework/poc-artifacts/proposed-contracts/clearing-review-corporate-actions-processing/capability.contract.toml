@@ -1,0 +1,50 @@
+contract_version = 1
+
+[capability]
+id = "clearing-review-corporate-actions-processing"
+name = "clearing-review-corporate-actions-processing"
+governed = true
+description = "Reviewer for corporate-action import/classification, processor-family routing, approval and apply gates, and CAS list/detail contract behavior in the Clearing codebase. Use when changes or implementation plans touch `FetchCorporateActionsJob`, `CorporateActionService`, `CorporateActionHandler`, dividend approval flows, CAS DTOs and projections, upstream corporate-action client contracts, or CAS UI list/detail rendering."
+
+[routing]
+aliases = [
+  "$clearing-review-corporate-actions-processing",
+  "clearing review corporate actions processing",
+  "clearing-review-corporate-actions-processing"
+]
+hints = [
+  "apply gates",
+  "cas dtos",
+  "cas ui list/detail rendering",
+  "clearing review corporate actions processing",
+  "dividend approval flows",
+  "implementation plans touch `fetchcorporateactionsjob`",
+  "processor-family routing",
+  "reviewer for corporate-action import/classification",
+  "upstream corporate-action client contracts"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-review-corporate-actions-processing"
+status = "poc-dry-run"

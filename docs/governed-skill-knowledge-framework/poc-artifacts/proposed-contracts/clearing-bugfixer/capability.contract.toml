@@ -1,0 +1,53 @@
+contract_version = 1
+
+[capability]
+id = "clearing-bugfixer"
+name = "clearing-bugfixer"
+governed = true
+description = "End-to-end bugfix workflow for the Clearing monorepo using BUGFIX_COOKBOOK prompts, artifact gates, DB/log evidence, and delivery closure. Use when asked to reproduce a bug, diagnose root cause, confirm findings with evidence, plan/implement a fix, verify outcomes, write bugfix release notes under Clearing-docs/docs/bugfixes, or close bugfix delivery with Azure DevOps, Monday, and 7pace linkage."
+
+[routing]
+aliases = [
+  "$clearing-bugfixer",
+  "clearing bugfixer",
+  "clearing-bugfixer"
+]
+hints = [
+  "7pace linkage",
+  "artifact gates",
+  "clearing bugfixer",
+  "close bugfix delivery with azure devops",
+  "confirm findings with evidence",
+  "db/log evidence",
+  "delivery closure",
+  "diagnose root cause",
+  "plan/implement a fix",
+  "reproduce a bug",
+  "verify outcomes",
+  "write bugfix release notes under clearing-docs/docs/bugfixes"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-bugfixer"
+status = "poc-dry-run"

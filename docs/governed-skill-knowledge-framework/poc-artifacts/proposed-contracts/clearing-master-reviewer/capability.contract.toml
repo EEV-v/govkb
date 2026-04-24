@@ -1,0 +1,53 @@
+contract_version = 1
+
+[capability]
+id = "clearing-master-reviewer"
+name = "clearing-master-reviewer"
+governed = true
+description = "Master review orchestrator for the Clearing codebase. Use when Codex needs to inspect a change set or review artifact, including implementation plans created by the Clearing feature cookbook, identify impacted business and technical areas, select and run the right flow-specific or cross-cutting reviewers, create missing reviewer skills when needed, reconcile overlapping or conflicting feedback, manage repository review best practices, run a retrospective, update long-term memory for the maste..."
+
+[routing]
+aliases = [
+  "$clearing-master-reviewer",
+  "clearing master reviewer",
+  "clearing-master-reviewer"
+]
+hints = [
+  "child reviewers",
+  "clearing master reviewer",
+  "conflicting feedback",
+  "create missing reviewer skills when needed",
+  "cross-cutting reviewers",
+  "identify impacted business",
+  "inspect a change set",
+  "manage repository review best practices",
+  "master review orchestrator for the clearing codebase",
+  "reconcile overlapping",
+  "review artifact",
+  "run a retrospective"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-master-reviewer"
+status = "poc-dry-run"

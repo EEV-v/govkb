@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from pathlib import Path
 import sys
 import tomllib
@@ -39,8 +40,23 @@ def _run_stage(args) -> int:
     if not session_file.is_file():
         print(f"error: session file not found: {session_file}", file=sys.stderr)
         return 1
+    semantic_seed = None
+    semantic_seed_file = getattr(args, "semantic_seed_file", None)
+    if semantic_seed_file:
+        seed_path = Path(semantic_seed_file).expanduser().resolve()
+        if not seed_path.is_file():
+            print(f"error: semantic seed file not found: {seed_path}", file=sys.stderr)
+            return 1
+        try:
+            semantic_seed = json.loads(seed_path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as exc:
+            print(f"error: invalid semantic seed file {seed_path}: {exc}", file=sys.stderr)
+            return 1
+        if semantic_seed is not None and not isinstance(semantic_seed, dict):
+            print(f"error: semantic seed file must contain one JSON object: {seed_path}", file=sys.stderr)
+            return 1
     try:
-        result = stage_candidate_from_session(project_root, session_file)
+        result = stage_candidate_from_session(project_root, session_file, semantic_seed=semantic_seed)
     except Exception as exc:
         print(f"error: could not stage candidate: {exc}", file=sys.stderr)
         return 1

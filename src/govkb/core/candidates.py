@@ -651,6 +651,113 @@ def _candidate_summary(candidate_id: str, user_text: str, ignored_tokens: set[st
     return f"Repeated unmatched project work may need a dedicated governed capability for {candidate_id}."
 
 
+def _semantic_seed_text(seed: dict[str, Any] | None, key: str) -> str | None:
+    if not isinstance(seed, dict):
+        return None
+    value = seed.get(key)
+    if not isinstance(value, str):
+        return None
+    compact = re.sub(r"\s+", " ", value.strip())
+    return compact or None
+
+
+def _semantic_seed_string_list(seed: dict[str, Any] | None, key: str, *, limit: int = 12) -> tuple[str, ...]:
+    if not isinstance(seed, dict):
+        return ()
+    value = seed.get(key)
+    if not isinstance(value, list):
+        return ()
+    ordered: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        compact = re.sub(r"\s+", " ", item.strip())
+        if not compact or compact in ordered:
+            continue
+        ordered.append(compact)
+        if len(ordered) >= limit:
+            break
+    return tuple(ordered)
+
+
+def _semantic_seed_identifier(seed: dict[str, Any] | None, key: str) -> str | None:
+    value = _semantic_seed_text(seed, key)
+    if not value:
+        return None
+    normalized = normalize_identifier(value)
+    return normalized or None
+
+
+def _semantic_scope_metadata(seed: dict[str, Any] | None) -> tuple[str | None, tuple[str, ...], tuple[str, ...]]:
+    return (
+        _semantic_seed_text(seed, "scope_summary"),
+        _semantic_seed_string_list(seed, "in_scope", limit=8),
+        _semantic_seed_string_list(seed, "out_of_scope", limit=8),
+    )
+
+
+def _normalize_repo_relative_path(path: str) -> str | None:
+    normalized = path.replace("\\", "/").strip()
+    if not normalized or normalized.startswith("/"):
+        return None
+    normalized = re.sub(r"^\./+", "", normalized)
+    if normalized.startswith("../") or "/../" in normalized or normalized == "..":
+        return None
+    if normalized.startswith(".codex/"):
+        return None
+    return normalized or None
+
+
+def _semantic_fact_rows(
+    seed: dict[str, Any] | None,
+    *,
+    source_sessions: tuple[str, ...],
+) -> tuple[dict[str, object], ...]:
+    if not isinstance(seed, dict):
+        return ()
+    value = seed.get("facts")
+    if not isinstance(value, list):
+        return ()
+    rows: list[dict[str, object]] = []
+    seen: set[tuple[str, str]] = set()
+    for index, item in enumerate(value, start=1):
+        if not isinstance(item, dict):
+            continue
+        section = _semantic_seed_text(item, "section")
+        fact = _semantic_seed_text(item, "fact")
+        if not section or not fact:
+            continue
+        key = (section, fact)
+        if key in seen:
+            continue
+        seen.add(key)
+        confidence_value = item.get("confidence")
+        if isinstance(confidence_value, (int, float)) and not isinstance(confidence_value, bool):
+            confidence = max(0.0, min(float(confidence_value), 1.0))
+        else:
+            confidence = 0.74
+        repo_paths = tuple(
+            normalized
+            for normalized in (
+                _normalize_repo_relative_path(str(path_value))
+                for path_value in (item.get("repo_paths") if isinstance(item.get("repo_paths"), list) else [])
+            )
+            if normalized
+        )
+        grouping_key = _semantic_seed_text(item, "grouping_key") or f"semantic-fact-{index}"
+        rows.append(
+            {
+                "grouping_key": grouping_key,
+                "section": section,
+                "fact": fact,
+                "confidence": confidence,
+                "provenance_sessions": list(source_sessions),
+                "repo_paths": list(repo_paths),
+            }
+        )
+    return tuple(rows)
+
+
 def _narrowed_summary(default_capability_id: str, summary: str) -> str:
     prefix = "Repeated work around "
     suffix = " may need a dedicated governed capability."
@@ -1019,6 +1126,7 @@ def _candidate_fact_rows(
                 "fact": fact,
                 "confidence": 0.72 if _fact_section(item) == "Stable Patterns" else 0.74,
                 "provenance_sessions": list(source_sessions),
+                "repo_paths": [],
             }
         )
     return tuple(rows)
@@ -1029,24 +1137,33 @@ def _candidate_facts_toml(
     scope_summary: str,
     in_scope: tuple[str, ...],
     source_sessions: tuple[str, ...],
+    fact_rows: tuple[dict[str, object], ...] | None = None,
 ) -> str:
     lines = ["facts_version = 1", ""]
-    for row in _candidate_fact_rows(
+    rows = fact_rows or _candidate_fact_rows(
         scope_summary=scope_summary,
         in_scope=in_scope,
         source_sessions=source_sessions,
-    ):
+    )
+    for row in rows:
         lines.append("[[facts]]")
         lines.append(f'grouping_key = {json.dumps(str(row["grouping_key"]))}')
         lines.append(f'section = {json.dumps(str(row["section"]))}')
         lines.append(f'fact = {json.dumps(str(row["fact"]))}')
         lines.append(f'confidence = {float(row["confidence"]):.2f}')
         lines.append(f'provenance_sessions = {_toml_string_list(tuple(str(item) for item in row["provenance_sessions"]))}')
+        repo_paths = row.get("repo_paths")
+        if isinstance(repo_paths, list) and repo_paths:
+            lines.append(f'repo_paths = {_toml_string_list(tuple(str(item) for item in repo_paths))}')
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
 
-def stage_candidate_from_session(project_root: Path, session_file: Path) -> CandidateStageResult:
+def stage_candidate_from_session(
+    project_root: Path,
+    session_file: Path,
+    semantic_seed: dict[str, Any] | None = None,
+) -> CandidateStageResult:
     """Create or update a governed capability candidate from a Codex session."""
     resolved_root = resolve_project_root(project_root)
     governed_root = resolved_root / ".governed"
@@ -1055,13 +1172,25 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
 
     session_id, timestamp, user_text, assistant_text = _session_text(session_file)
     ignored_tokens = _ignored_tokens(resolved_root)
-    candidate_id = _candidate_id(user_text, assistant_text, ignored_tokens)
+    candidate_id = _semantic_seed_identifier(semantic_seed, "candidate_id") or _candidate_id(
+        user_text,
+        assistant_text,
+        ignored_tokens,
+    )
     proposed_candidate_id = candidate_id
-    summary = _candidate_summary(candidate_id, user_text, ignored_tokens)
-    raw_hints = _keywords(f"{user_text}\n{assistant_text}", limit=10, ignored_tokens=ignored_tokens) or (
+    summary = _semantic_seed_text(semantic_seed, "summary") or _candidate_summary(candidate_id, user_text, ignored_tokens)
+    raw_hints = _semantic_seed_string_list(semantic_seed, "routing_hints", limit=12) or _keywords(
+        f"{user_text}\n{assistant_text}",
+        limit=10,
+        ignored_tokens=ignored_tokens,
+    ) or (
         candidate_id.replace("-", " "),
     )
-    initial_default_capability_id = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)[0]
+    initial_default_capability_id = _semantic_seed_identifier(semantic_seed, "default_capability_id") or _suggested_capability_ids(
+        candidate_id,
+        raw_hints,
+        ignored_tokens,
+    )[0]
     hints = _canonical_routing_hints(initial_default_capability_id, raw_hints, ignored_tokens)
     candidate_root = governed_root / "candidates" / candidate_id
     candidate_path = candidate_root / "candidate.toml"
@@ -1150,21 +1279,28 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
             not isinstance(legacy_suggestions, list)
             or not any(isinstance(item, str) and item.strip() for item in legacy_suggestions)
             or refresh_proposal
+            or semantic_seed is not None
         ):
             suggested_capability_ids = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)
+            seeded_default_capability_id = _semantic_seed_identifier(semantic_seed, "default_capability_id")
+            if seeded_default_capability_id:
+                suggested_capability_ids = tuple(
+                    dict.fromkeys((seeded_default_capability_id, *suggested_capability_ids))
+                )
             default_capability_id = suggested_capability_ids[0]
         else:
             default_capability_id = existing_default_capability_id
             suggested_capability_ids = candidate_suggested_capability_ids(existing, candidate_id)
         hints = _canonical_routing_hints(default_capability_id, raw_hints, ignored_tokens)
         existing_summary = proposal.get("summary") if isinstance(proposal, dict) else None
-        if isinstance(existing_summary, str) and existing_summary.strip():
+        if semantic_seed is None and isinstance(existing_summary, str) and existing_summary.strip():
             summary = existing_summary
         summary = _narrowed_summary(default_capability_id, summary)
         scope = existing.get("scope") if isinstance(existing.get("scope"), dict) else {}
         existing_scope_summary = scope.get("summary") if isinstance(scope, dict) else None
         in_scope = tuple(str(item) for item in scope.get("in_scope", ()) if isinstance(item, str)) if isinstance(scope, dict) else ()
         out_of_scope = tuple(str(item) for item in scope.get("out_of_scope", ()) if isinstance(item, str)) if isinstance(scope, dict) else ()
+        seeded_scope_summary, seeded_in_scope, seeded_out_of_scope = _semantic_scope_metadata(semantic_seed)
         if refresh_proposal or not isinstance(existing_scope_summary, str) or not existing_scope_summary.strip() or not in_scope or not out_of_scope:
             computed_scope_summary, computed_in_scope, computed_out_of_scope = _scope_metadata(
                 default_capability_id,
@@ -1172,19 +1308,31 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
                 ignored_tokens,
                 summary,
             )
-            scope_summary = computed_scope_summary
-            in_scope = computed_in_scope if refresh_proposal else in_scope or computed_in_scope
-            out_of_scope = computed_out_of_scope if refresh_proposal else out_of_scope or computed_out_of_scope
+            scope_summary = seeded_scope_summary or computed_scope_summary
+            in_scope = seeded_in_scope or (computed_in_scope if refresh_proposal else in_scope or computed_in_scope)
+            out_of_scope = seeded_out_of_scope or (
+                computed_out_of_scope if refresh_proposal else out_of_scope or computed_out_of_scope
+            )
         else:
-            scope_summary = existing_scope_summary
+            scope_summary = seeded_scope_summary or existing_scope_summary
+            in_scope = seeded_in_scope or in_scope
+            out_of_scope = seeded_out_of_scope or out_of_scope
     else:
         suggested_capability_ids = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)
+        seeded_default_capability_id = _semantic_seed_identifier(semantic_seed, "default_capability_id")
+        if seeded_default_capability_id:
+            suggested_capability_ids = tuple(dict.fromkeys((seeded_default_capability_id, *suggested_capability_ids)))
         default_capability_id = suggested_capability_ids[0]
         hints = _canonical_routing_hints(default_capability_id, raw_hints, ignored_tokens)
         summary = _narrowed_summary(default_capability_id, summary)
         scope_summary, in_scope, out_of_scope = _scope_metadata(default_capability_id, hints, ignored_tokens, summary)
+        seeded_scope_summary, seeded_in_scope, seeded_out_of_scope = _semantic_scope_metadata(semantic_seed)
+        scope_summary = seeded_scope_summary or scope_summary
+        in_scope = seeded_in_scope or in_scope
+        out_of_scope = seeded_out_of_scope or out_of_scope
 
     _remove_stale_session_candidates(governed_root, candidate_root, session_id)
+    semantic_fact_rows = _semantic_fact_rows(semantic_seed, source_sessions=tuple(source_sessions))
     candidate_root.mkdir(parents=True, exist_ok=True)
     candidate_path.write_text(
         _candidate_toml(
@@ -1209,6 +1357,7 @@ def stage_candidate_from_session(project_root: Path, session_file: Path) -> Cand
             scope_summary=scope_summary,
             in_scope=in_scope,
             source_sessions=tuple(source_sessions),
+            fact_rows=semantic_fact_rows or None,
         ),
         encoding="utf-8",
     )

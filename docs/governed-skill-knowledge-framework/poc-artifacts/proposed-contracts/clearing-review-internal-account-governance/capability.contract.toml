@@ -1,0 +1,50 @@
+contract_version = 1
+
+[capability]
+id = "clearing-review-internal-account-governance"
+name = "clearing-review-internal-account-governance"
+governed = true
+description = "Reviewer for governed internal-account creation and activation, internal account metadata and numbering, audit and authorization controls, selective OMS/SOD sync, and downstream internal-account reference behavior in the Clearing codebase. Use when changes or implementation plans touch `AccountController`, `AccountService`, `AccountRepository`, `AccountOpeningService` numbering logic, `EtnaSodHandler`, Accounts UI internal-account flows, or config-to-account reference migration for internal m..."
+
+[routing]
+aliases = [
+  "$clearing-review-internal-account-governance",
+  "clearing review internal account governance",
+  "clearing-review-internal-account-governance"
+]
+hints = [
+  "`accountopeningservice` numbering logic",
+  "accounts ui internal-account flows",
+  "authorization controls",
+  "clearing review internal account governance",
+  "config-to-account reference migration for internal master accounts",
+  "implementation plans touch `accountcontroller`",
+  "internal account metadata",
+  "reviewer for governed internal-account creation",
+  "selective oms/sod sync"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-review-internal-account-governance"
+status = "poc-dry-run"

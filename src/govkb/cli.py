@@ -48,6 +48,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_kb_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to bootstrap.")
     init_kb_parser.add_argument("--capability", help="Bootstrap one capability id.")
     init_kb_parser.add_argument("--all", action="store_true", help="Bootstrap all governed capabilities.")
+    init_kb_parser.add_argument("--codex-home", type=Path, help="Codex home override for local rematerialization after KB bootstrap.")
     init_kb_parser.set_defaults(handler=run_init_kb)
 
     apply_parser = subparsers.add_parser("apply", help="Materialize governed content into an assistant target.")
@@ -91,6 +92,11 @@ def build_parser() -> argparse.ArgumentParser:
     candidates_stage_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
     candidates_stage_parser.add_argument("--assistant", default="codex", choices=("codex",), help="Assistant that produced the session.")
     candidates_stage_parser.add_argument("--session-file", type=Path, required=True, help="Session JSONL file to inspect.")
+    candidates_stage_parser.add_argument(
+        "--semantic-seed-file",
+        type=Path,
+        help="Optional JSON file with semantic candidate metadata and fact overrides.",
+    )
     candidates_stage_parser.set_defaults(handler=run_candidates)
 
     candidates_list_parser = candidates_subparsers.add_parser("list", help="List staged capability candidates.")

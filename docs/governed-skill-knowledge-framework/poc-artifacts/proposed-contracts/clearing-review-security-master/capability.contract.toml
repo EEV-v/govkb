@@ -1,0 +1,52 @@
+contract_version = 1
+
+[capability]
+id = "clearing-review-security-master"
+name = "clearing-review-security-master"
+governed = true
+description = "Reviewer for Golden Security, legacy security lookup compatibility, DTCC security-master integration, canonical identifier rules, and related resolver or DTO changes in the Clearing codebase. Use when changes or implementation plans touch Golden Security tables or repositories, `SecurityRepository`, DTCC security master lookup seams, identifier-resolution contracts, or additive security-master fields on downstream DTOs."
+
+[routing]
+aliases = [
+  "$clearing-review-security-master",
+  "clearing review security master",
+  "clearing-review-security-master"
+]
+hints = [
+  "additive security-master fields on downstream dtos",
+  "canonical identifier rules",
+  "clearing review security master",
+  "dtcc security master lookup seams",
+  "dtcc security-master integration",
+  "dto changes in the clearing codebase",
+  "identifier-resolution contracts",
+  "implementation plans touch golden security tables",
+  "legacy security lookup compatibility",
+  "related resolver",
+  "reviewer for golden security"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-review-security-master"
+status = "poc-dry-run"

@@ -20,12 +20,15 @@ GENERIC_RELEVANCE_PATTERNS = [
     re.compile(r"(?i)\bregression\b"),
     re.compile(r"(?i)\brecommendation\b"),
     re.compile(r"(?i)\bimplementation-plan\b"),
+    re.compile(r"(?i)\bverification:\b"),
     re.compile(r"(?i)\breview\b"),
     re.compile(r"(?i)\bbugfix\b"),
     re.compile(r"(?i)\bworkflow\b"),
     re.compile(r"(?i)\brunbook\b"),
     re.compile(r"(?i)\bplaybook\b"),
     re.compile(r"(?i)\bstartup\b"),
+    re.compile(r"(?i)\b(integration|unit) tests?\b"),
+    re.compile(r"(?i)\b(dotnet test|go test|cargo test|pytest|python3? -m pytest|python3? -m unittest|npm (?:run )?test|pnpm test|yarn test)\b"),
     re.compile(r"(?i)\bverification commands?\b"),
     re.compile(r"(?i)\beffective ports?\b"),
 ]
@@ -190,8 +193,8 @@ def prompt_targets_for_session(
     targets: dict[str, GovernedMemoryTarget],
     signals: SessionSignals,
 ) -> dict[str, GovernedMemoryTarget]:
-    """Narrow prompt targets to explicit or hinted capabilities when possible."""
-    likely = _dedupe_keep_order(list(signals.explicit_skills) + list(signals.hinted_skills))
-    if not likely:
-        return targets
-    return {skill: targets[skill] for skill in likely if skill in targets}
+    """Prioritize explicit or hinted capabilities without making hints the only prompt path."""
+    if signals.explicit_skills:
+        return {skill: targets[skill] for skill in signals.explicit_skills if skill in targets}
+    ordered = list(signals.hinted_skills) + [skill for skill in targets if skill not in signals.hinted_skills]
+    return {skill: targets[skill] for skill in ordered if skill in targets}

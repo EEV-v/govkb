@@ -1,0 +1,52 @@
+contract_version = 1
+
+[capability]
+id = "clearing-review-transaction-lots-reconciliation"
+name = "clearing-review-transaction-lots-reconciliation"
+governed = true
+description = "Reviewer for TransactionLot creation, execution-venue ingestion, and transaction-lot reconciliation flows in the Clearing codebase. Use when changes or implementation plans touch TransactionLot APIs, service or repository logic, execution or commission ingestion, position-lot linkage, UTC or trade-blotter matching, DTCC or execution-venue reconciliation flows, or tests and docs that define these behaviors."
+
+[routing]
+aliases = [
+  "$clearing-review-transaction-lots-reconciliation",
+  "clearing review transaction lots reconciliation",
+  "clearing-review-transaction-lots-reconciliation"
+]
+hints = [
+  "clearing review transaction lots reconciliation",
+  "commission ingestion",
+  "docs that define these behaviors",
+  "execution-venue ingestion",
+  "execution-venue reconciliation flows",
+  "implementation plans touch transactionlot apis",
+  "position-lot linkage",
+  "repository logic",
+  "reviewer for transactionlot creation",
+  "trade-blotter matching",
+  "transaction-lot reconciliation flows in the clearing codebase"
+]
+negative_hints = [
+  "codex-memory-review",
+  "govkb install",
+  "govkb apply",
+  "report output",
+  "cron schedule"
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Repository Best Practices",
+  "Stable Risk Patterns",
+  "Operational Checklist"
+]
+
+[migration]
+source_adapter = "codex"
+source_path = "/mnt/c/Users/Ev/.codex/skills/clearing-review-transaction-lots-reconciliation"
+status = "poc-dry-run"
