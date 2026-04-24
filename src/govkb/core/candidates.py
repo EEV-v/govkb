@@ -1261,6 +1261,10 @@ def _verification_command_fact(command: str, fact_topic: str) -> str:
     return f"Use `{command}` as the {topic} verification command."
 
 
+def _repo_path_exists(project_root: Path | None, path_value: str) -> bool:
+    return project_root is None or (project_root / path_value).exists()
+
+
 def _generic_scope_item(item: str, fact_topic: str) -> bool:
     lowered = item.lower().strip()
     topic = fact_topic.lower()
@@ -1323,9 +1327,12 @@ def _observed_fact_rows(
     session_text: str,
     source_sessions: tuple[str, ...],
     fact_topic: str,
+    project_root: Path | None = None,
 ) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
     for index, path_value in enumerate(_repo_paths_from_text(session_text, limit=6), start=1):
+        if not _repo_path_exists(project_root, path_value):
+            continue
         rows.append(
             {
                 "grouping_key": f"repo-artifact-{index}",
@@ -1344,7 +1351,11 @@ def _observed_fact_rows(
                 "fact": _verification_command_fact(command, fact_topic),
                 "confidence": 0.76,
                 "provenance_sessions": list(source_sessions),
-                "repo_paths": list(_repo_paths_from_text(command, limit=4)),
+                "repo_paths": [
+                    path_value
+                    for path_value in _repo_paths_from_text(command, limit=4)
+                    if _repo_path_exists(project_root, path_value)
+                ],
             }
         )
     return tuple(rows)
@@ -1356,6 +1367,7 @@ def _candidate_fact_rows(
     in_scope: tuple[str, ...],
     source_sessions: tuple[str, ...],
     session_text: str = "",
+    project_root: Path | None = None,
 ) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
     fact_topic = _fact_topic(scope_summary)
@@ -1363,6 +1375,7 @@ def _candidate_fact_rows(
         session_text=session_text,
         source_sessions=source_sessions,
         fact_topic=fact_topic,
+        project_root=project_root,
     )
     rows.append(
         {
@@ -1415,6 +1428,7 @@ def _candidate_facts_toml(
     source_sessions: tuple[str, ...],
     session_text: str = "",
     fact_rows: tuple[dict[str, object], ...] | None = None,
+    project_root: Path | None = None,
 ) -> str:
     lines = ["facts_version = 1", ""]
     rows = fact_rows or _candidate_fact_rows(
@@ -1422,6 +1436,7 @@ def _candidate_facts_toml(
         in_scope=in_scope,
         source_sessions=source_sessions,
         session_text=session_text,
+        project_root=project_root,
     )
     for row in rows:
         lines.append("[[facts]]")
@@ -1647,6 +1662,7 @@ def stage_candidate_from_session(
             source_sessions=tuple(source_sessions),
             session_text=session_text,
             fact_rows=semantic_fact_rows or None,
+            project_root=resolved_root,
         ),
         encoding="utf-8",
     )

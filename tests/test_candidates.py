@@ -89,6 +89,9 @@ class CandidateCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "ExampleApp"
             project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "release").mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "release" / "signoff.md").write_text("# Signoff\n", encoding="utf-8")
+            (project_root / "docs" / "release" / "checklist.md").write_text("# Checklist\n", encoding="utf-8")
             run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
 
             session_path = Path(temp_dir) / "backend-workflow.jsonl"
@@ -117,6 +120,9 @@ class CandidateCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "ExampleApp"
             project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "release").mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "release" / "signoff.md").write_text("# Signoff\n", encoding="utf-8")
+            (project_root / "docs" / "release" / "checklist.md").write_text("# Checklist\n", encoding="utf-8")
             run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
 
             first_session = Path(temp_dir) / "backend-workflow-one.jsonl"
@@ -371,6 +377,9 @@ sessions = ["backend-workflow"]
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "ExampleApp"
             project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "release").mkdir(parents=True, exist_ok=True)
+            (project_root / "docs" / "release" / "signoff.md").write_text("# Signoff\n", encoding="utf-8")
+            (project_root / "docs" / "release" / "checklist.md").write_text("# Checklist\n", encoding="utf-8")
             run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
 
             session_path = Path(temp_dir) / "release-signoff.jsonl"
@@ -441,6 +450,48 @@ sessions = ["backend-workflow"]
             self.assertNotIn("Stable commands or conventions", facts_text)
             self.assertNotIn("for this candidate", facts_text)
             self.assertNotIn("Подготовь", facts_text)
+
+    def test_stage_candidate_filters_prose_like_missing_repo_paths(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "app" / "frontend").mkdir(parents=True, exist_ok=True)
+            (project_root / "e2e").mkdir(parents=True, exist_ok=True)
+            (project_root / "app" / "frontend" / "package.json").write_text(
+                '{"scripts":{"test":"vitest"}}\n',
+                encoding="utf-8",
+            )
+            (project_root / "e2e" / "README.md").write_text("# E2E\n", encoding="utf-8")
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            session_path = Path(temp_dir) / "frontend-e2e.jsonl"
+            _write_session(
+                session_path,
+                "frontend-e2e-one",
+                project_root,
+                "Document the reusable Frontend/e2e workflow using app/frontend/package.json and e2e/README.md.",
+                assistant_message=(
+                    "Use `npm --prefix app/frontend run test` for frontend checks. "
+                    "The Frontend/e2e workflow should stay grounded in repo docs."
+                ),
+            )
+
+            exit_code = run_candidates(
+                argparse.Namespace(
+                    candidate_action="stage",
+                    project_root=project_root,
+                    assistant="codex",
+                    session_file=session_path,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            facts_text = next((project_root / ".governed" / "candidates").glob("*/candidate-facts.toml")).read_text(
+                encoding="utf-8"
+            )
+            self.assertIn('repo_paths = ["app/frontend/package.json"]', facts_text)
+            self.assertIn('repo_paths = ["e2e/README.md"]', facts_text)
+            self.assertNotIn("Frontend/e2e", facts_text)
 
     def test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
