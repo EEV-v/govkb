@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import shutil
+import subprocess
 import tempfile
 from pathlib import Path
 import sys
@@ -1071,6 +1072,192 @@ required_sections = ["Working Agreement"]
             deferred_rows = report_calls[-1][0][4]
             self.assertEqual(len(deferred_rows), 1)
             self.assertIn("transport failed", deferred_rows[0]["error"])
+
+    def test_packaged_scheduler_defers_sessions_when_classifier_times_out(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = root / "OrgChart"
+            reports_root = root / "reports"
+            logs_root = root / "logs"
+            state_dir = root / "state-dir"
+            session_path = root / "session.jsonl"
+            memory_path = root / "long-term-memory.md"
+            reports_root.mkdir(parents=True, exist_ok=True)
+            logs_root.mkdir(parents=True, exist_ok=True)
+            state_dir.mkdir(parents=True, exist_ok=True)
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / ".governed").mkdir(parents=True, exist_ok=True)
+            memory_path.write_text("# Project Knowledge Steward\n\n## Working Agreement\n\n- durable note\n", encoding="utf-8")
+            session_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "session-1",
+                                    "timestamp": "2026-04-24T08:15:04.645Z",
+                                    "cwd": str(project_root),
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "Capture the reusable workflow and verification command for this OrgChart task.",
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            session = scheduler.SessionRef(
+                id="session-1",
+                thread_name="session.jsonl",
+                updated_at="2026-04-24T08:15:04.645Z",
+                path=session_path,
+                indexed=False,
+            )
+            target = scheduler.MemoryTarget(
+                skill="govkb-orgchart-project-knowledge-steward",
+                capability_id="project-knowledge-steward",
+                project_id="orgchart",
+                path=memory_path,
+                requires_explicit_acceptance=False,
+                headings=("Working Agreement",),
+                content=memory_path.read_text(encoding="utf-8"),
+                aliases=("$project-knowledge-steward",),
+                hints=("workflow", "verification command"),
+                negative_hints=(),
+                project_root=project_root,
+            )
+
+            original_state_dir = scheduler.STATE_DIR
+            original_report_dir = scheduler.REPORT_DIR
+            original_log_dir = scheduler.LOG_DIR
+            original_state_file = scheduler.STATE_FILE
+            original_log = scheduler.log
+            report_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+            try:
+                scheduler.STATE_DIR = state_dir
+                scheduler.REPORT_DIR = reports_root
+                scheduler.LOG_DIR = logs_root
+                scheduler.STATE_FILE = state_dir / "state.json"
+                scheduler.log = lambda _message: None
+
+                with patch.object(
+                    scheduler,
+                    "load_sessions",
+                    return_value=(
+                        [session],
+                        scheduler.DiscoveryStats(
+                            indexed_rows=0,
+                            indexed_missing_files=0,
+                            file_only_recent_unprocessed=1,
+                            selected_indexed=0,
+                            selected_file_only=1,
+                        ),
+                    ),
+                ), patch.object(
+                    scheduler,
+                    "discover_memory_targets",
+                    return_value={target.skill: target},
+                ), patch.object(
+                    scheduler,
+                    "classify_session",
+                    side_effect=scheduler.TimeoutClassificationError("codex classifier timed out after 30 seconds; retry later"),
+                ), patch.object(
+                    scheduler,
+                    "run_candidate_staging",
+                    return_value=0,
+                ), patch.object(
+                    scheduler,
+                    "run_candidate_auto_create",
+                    return_value=(0, []),
+                ), patch.object(
+                    scheduler,
+                    "write_patch",
+                    return_value=None,
+                ), patch.object(
+                    scheduler,
+                    "write_report",
+                    side_effect=lambda *args, **kwargs: report_calls.append((args, kwargs)) or None,
+                ):
+                    exit_code = scheduler.process(
+                        argparse.Namespace(
+                            dry_run=False,
+                            lookback_days=30,
+                            max_sessions=20,
+                            verbose=False,
+                            codex_timeout=30,
+                            session_file=None,
+                            resolved_project_root=project_root,
+                            auto_promote=False,
+                        )
+                    )
+            finally:
+                scheduler.STATE_DIR = original_state_dir
+                scheduler.REPORT_DIR = original_report_dir
+                scheduler.LOG_DIR = original_log_dir
+                scheduler.STATE_FILE = original_state_file
+                scheduler.log = original_log
+
+            self.assertEqual(exit_code, 0)
+            self.assertGreaterEqual(len(report_calls), 1)
+            deferred_rows = report_calls[-1][0][4]
+            self.assertEqual(len(deferred_rows), 1)
+            self.assertIn("timed out", deferred_rows[0]["error"])
+
+    def test_classifier_timeout_is_retryable(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        target = scheduler.MemoryTarget(
+            skill="govkb-demo-project-project-knowledge-steward",
+            capability_id="project-knowledge-steward",
+            project_id="demo-project",
+            path=Path("/tmp/long-term-memory.md"),
+            requires_explicit_acceptance=False,
+            headings=("Working Agreement",),
+            content="# Project Knowledge Steward\n\n## Working Agreement\n\n- durable note\n",
+            aliases=("$project-knowledge-steward",),
+            hints=("workflow",),
+            negative_hints=(),
+            project_root=Path("/tmp/DemoProject"),
+        )
+        session = scheduler.SessionRef(
+            id="session-1",
+            thread_name="session.jsonl",
+            updated_at="2026-04-24T08:15:04.645Z",
+            path=Path("/tmp/session.jsonl"),
+            indexed=False,
+        )
+        evidence = scheduler.SessionEvidence(
+            user_ask="Capture the durable workflow.",
+            final_outcome="Documented the workflow.",
+            changed_files=(),
+            successful_commands=(),
+            failed_commands=(),
+            artifact_paths=(),
+        )
+
+        with patch.object(scheduler, "find_codex", return_value=sys.executable), patch.object(
+            scheduler.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(cmd=["codex"], timeout=1),
+        ):
+            with self.assertRaises(scheduler.TimeoutClassificationError):
+                scheduler.classify_session(
+                    session,
+                    {target.skill: target},
+                    "Session: session-1",
+                    evidence,
+                    timeout=1,
+                )
 
     def test_packaged_scheduler_passes_semantic_candidate_seed_to_candidate_staging(self) -> None:
         scheduler = load_packaged_memory_review_script()

@@ -18,7 +18,13 @@ from govkb.core.install_state import load_install_state
 from govkb.core.candidates import load_candidate
 
 
-def _write_session(path: Path, session_id: str, project_root: Path, request: str) -> None:
+def _write_session(
+    path: Path,
+    session_id: str,
+    project_root: Path,
+    request: str,
+    assistant_message: str = "Implemented the reusable workflow and verification command.",
+) -> None:
     rows = [
         {
             "type": "session_meta",
@@ -39,7 +45,7 @@ def _write_session(path: Path, session_id: str, project_root: Path, request: str
             "type": "event_msg",
             "payload": {
                 "type": "agent_message",
-                "message": "Implemented the reusable workflow and verification command.",
+                "message": assistant_message,
             },
         },
     ]
@@ -360,6 +366,75 @@ sessions = ["backend-workflow"]
             self.assertIn('repo_paths = ["src/tests/ReleaseChecks/ReleaseChecks.csproj"]', facts_text)
             self.assertIn('docs/release/release-notes.md', facts_text)
             self.assertNotIn("Please summarize the work we just did", facts_text)
+
+    def test_stage_candidate_uses_repo_artifacts_for_mixed_language_non_coding_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            session_path = Path(temp_dir) / "release-signoff.jsonl"
+            _write_session(
+                session_path,
+                "release-signoff",
+                project_root,
+                "Подготовь повторно используемую заметку по релизному согласованию и проверкам.",
+                assistant_message=(
+                    "Обновил docs/release/signoff.md и docs/release/checklist.md. "
+                    "Verification: `python3 -m unittest discover -s tests -v` passed."
+                ),
+            )
+            second_session_path = Path(temp_dir) / "release-checklist.jsonl"
+            _write_session(
+                second_session_path,
+                "release-checklist",
+                project_root,
+                "Повтори release signoff workflow: обнови чеклист и сохрани verification signals.",
+                assistant_message=(
+                    "Refined docs/release/checklist.md and docs/release/signoff.md. "
+                    "Verification: `python3 -m unittest discover -s tests -v` passed."
+                ),
+            )
+
+            exit_code = run_candidates(
+                argparse.Namespace(
+                    candidate_action="stage",
+                    project_root=project_root,
+                    assistant="codex",
+                    session_file=session_path,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            second_exit_code = run_candidates(
+                argparse.Namespace(
+                    candidate_action="stage",
+                    project_root=project_root,
+                    assistant="codex",
+                    session_file=second_session_path,
+                )
+            )
+            self.assertEqual(second_exit_code, 0)
+            _, candidate = load_candidate(project_root, "release-signoff-workflow")
+            self.assertEqual(candidate["status"], "ready-for-review")
+            self.assertEqual(candidate["occurrences"], 2)
+            self.assertEqual(candidate["proposal"]["capability_id"], "release-signoff-workflow")
+            self.assertEqual(
+                candidate["proposal"]["summary"],
+                "Repeated work around release signoff workflow may need a dedicated governed capability.",
+            )
+            facts_text = (
+                project_root
+                / ".governed"
+                / "candidates"
+                / "release-signoff-workflow"
+                / "candidate-facts.toml"
+            ).read_text(encoding="utf-8")
+            self.assertIn('section = "Code And Docs Map"', facts_text)
+            self.assertIn('repo_paths = ["docs/release/signoff.md"]', facts_text)
+            self.assertIn('section = "Commands And Verification"', facts_text)
+            self.assertIn("python3 -m unittest discover -s tests -v", facts_text)
+            self.assertNotIn("Подготовь", facts_text)
 
     def test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

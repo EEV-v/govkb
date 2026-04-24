@@ -168,6 +168,67 @@ TOPIC_BOUNDARY_TOKENS = {
     "write",
 }
 
+PATH_CONTEXT_TOKENS = {
+    "adapters",
+    "app",
+    "apps",
+    "capabilities",
+    "candidate",
+    "candidates",
+    "config",
+    "doc",
+    "docs",
+    "governed",
+    "knowledge",
+    "lib",
+    "packages",
+    "reference",
+    "references",
+    "script",
+    "scripts",
+    "service",
+    "services",
+    "source",
+    "src",
+    "test",
+    "tests",
+}
+
+PATH_SUFFIX_TOKENS = {
+    "cs",
+    "csproj",
+    "json",
+    "md",
+    "py",
+    "sln",
+    "toml",
+    "ts",
+    "tsx",
+    "yaml",
+    "yml",
+}
+
+COMMAND_PREFIXES = (
+    "cargo ",
+    "dotnet ",
+    "go ",
+    "just ",
+    "make ",
+    "npm ",
+    "pnpm ",
+    "python ",
+    "python3 ",
+    "pytest",
+    "yarn ",
+)
+
+REPO_PATH_PATTERN = re.compile(
+    r"(?:`)?("
+    r"[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+"
+    r"|[A-Za-z0-9_.-]+\.(?:csproj|json|md|py|sln|toml|tsx?|ya?ml)"
+    r")(?:`)?"
+)
+
 GENERIC_CANDIDATE_TOKENS = {
     "candidate",
     "capability",
@@ -253,6 +314,71 @@ def _feature_name(text: str) -> str | None:
 
 def _tokenize(text: str) -> tuple[str, ...]:
     return tuple(token for token in re.findall(r"[A-Za-z][A-Za-z0-9]*", text.lower()) if re.search(r"[A-Za-z]", token))
+
+
+def _repo_paths_from_text(text: str, *, limit: int = 12) -> tuple[str, ...]:
+    """Extract portable repo-relative paths from mixed-language session text."""
+    ordered: list[str] = []
+    for match in REPO_PATH_PATTERN.finditer(text):
+        start = match.start(1)
+        if start > 0 and text[start - 1] in {"/", "~"}:
+            continue
+        normalized = _normalize_repo_relative_path(match.group(1))
+        if not normalized or normalized in ordered:
+            continue
+        ordered.append(normalized)
+        if len(ordered) >= limit:
+            break
+    return tuple(ordered)
+
+
+def _path_topic_tokens(text: str, ignored_tokens: set[str]) -> tuple[str, ...]:
+    """Derive a topic from observed repo artifacts before prompt wording."""
+    fallback_topic: tuple[str, ...] = ()
+    for path_value in _repo_paths_from_text(text):
+        path = Path(path_value)
+        tokens: list[str] = []
+        for part in path.parts:
+            if part in {".", ""}:
+                continue
+            stem = Path(part).stem
+            for token in _tokenize(stem.replace(".", " ").replace("_", " ").replace("-", " ")):
+                if token in ignored_tokens or token in PATH_CONTEXT_TOKENS or token in PATH_SUFFIX_TOKENS:
+                    continue
+                if token in STOP_WORDS or token in GENERIC_DESCRIPTOR_TOKENS:
+                    continue
+                if token not in tokens:
+                    tokens.append(token)
+        if len(tokens) >= 2:
+            topic_core = [token for token in tokens if token not in TOPIC_SUFFIX_TOKENS]
+            if len(topic_core) < 2:
+                fallback_topic = fallback_topic or tuple(tokens[:3])
+                continue
+            topic = topic_core[:3]
+            if topic[-1] not in TOPIC_SUFFIX_TOKENS:
+                topic.append("workflow")
+            return tuple(topic)
+    if fallback_topic:
+        topic = list(fallback_topic)
+        if topic[-1] not in TOPIC_SUFFIX_TOKENS:
+            topic.append("workflow")
+        return tuple(topic)
+    return ()
+
+
+def _path_hints(text: str, ignored_tokens: set[str], *, limit: int = 10) -> tuple[str, ...]:
+    hints: list[str] = []
+    for path_value in _repo_paths_from_text(text):
+        for token in _path_topic_tokens(path_value, ignored_tokens) or _tokenize(path_value):
+            if token in ignored_tokens or token in PATH_CONTEXT_TOKENS or token in PATH_SUFFIX_TOKENS:
+                continue
+            if token in STOP_WORDS or token in GENERIC_DESCRIPTOR_TOKENS:
+                continue
+            if token not in hints:
+                hints.append(token)
+                if len(hints) >= limit:
+                    return tuple(hints)
+    return tuple(hints)
 
 
 def _ignored_tokens(project_root: Path) -> set[str]:
@@ -492,13 +618,14 @@ def _scope_metadata(
             ]
         )
     else:
-        scope_summary = summary
-        in_scope.extend(
-            [
-                "reusable workflow and verification steps proven across sessions",
-                "stable commands or conventions that should change future work in this topic area",
-            ]
-        )
+        topic = _repeated_work_topic(summary)
+        scope_summary = f"Reusable {topic}." if topic else summary
+        if topic:
+            in_scope.append(f"stable {topic} steps proven across sessions")
+            in_scope.append(f"stable commands or conventions that should change future {topic} work")
+        else:
+            in_scope.append("reusable workflow and verification steps proven across sessions")
+            in_scope.append("stable commands or conventions that should change future work in this topic area")
         out_of_scope.extend(
             [
                 "one-off task notes or ticket-specific status",
@@ -507,6 +634,15 @@ def _scope_metadata(
         )
 
     return scope_summary, tuple(dict.fromkeys(in_scope)), tuple(dict.fromkeys(out_of_scope))
+
+
+def _repeated_work_topic(summary: str) -> str | None:
+    prefix = "Repeated work around "
+    suffix = " may need a dedicated governed capability."
+    if not summary.startswith(prefix) or not summary.endswith(suffix):
+        return None
+    topic = summary[len(prefix) : -len(suffix)].strip()
+    return topic or None
 
 
 def _should_refresh_proposal(candidate_id: str, default_capability_id: str, hints: tuple[str, ...], ignored_tokens: set[str]) -> bool:
@@ -629,6 +765,9 @@ def _candidate_id(user_text: str, assistant_text: str, ignored_tokens: set[str])
     feature = _feature_name(user_text)
     if feature:
         return normalize_identifier(feature)
+    path_topic = _path_topic_tokens(f"{user_text}\n{assistant_text}", ignored_tokens)
+    if path_topic:
+        return normalize_identifier("-".join(path_topic))
     topic = _topic_tokens(user_text, ignored_tokens) or _topic_tokens(f"{user_text}\n{assistant_text}", ignored_tokens)
     if topic:
         return normalize_identifier("-".join(topic))
@@ -638,10 +777,13 @@ def _candidate_id(user_text: str, assistant_text: str, ignored_tokens: set[str])
     return "project-knowledge-candidate"
 
 
-def _candidate_summary(candidate_id: str, user_text: str, ignored_tokens: set[str]) -> str:
+def _candidate_summary(candidate_id: str, user_text: str, assistant_text: str, ignored_tokens: set[str]) -> str:
     feature = _feature_name(user_text)
     if feature:
         return f"Repeated work around {feature} may need a dedicated governed capability."
+    path_topic = _path_topic_tokens(f"{user_text}\n{assistant_text}", ignored_tokens)
+    if path_topic:
+        return f"Repeated work around {' '.join(path_topic)} may need a dedicated governed capability."
     topic = _topic_tokens(user_text, ignored_tokens)
     if topic:
         return f"Repeated work around {' '.join(topic)} may need a dedicated governed capability."
@@ -697,7 +839,8 @@ def _semantic_scope_metadata(seed: dict[str, Any] | None) -> tuple[str | None, t
 
 
 def _normalize_repo_relative_path(path: str) -> str | None:
-    normalized = path.replace("\\", "/").strip()
+    normalized = path.replace("\\", "/").strip().strip("`'\"")
+    normalized = normalized.rstrip(".,;:)]}")
     if not normalized or normalized.startswith("/"):
         return None
     normalized = re.sub(r"^\./+", "", normalized)
@@ -1097,11 +1240,58 @@ def _fact_section(item: str) -> str:
     return "Stable Workflows"
 
 
+def _command_facts_from_text(text: str, *, limit: int = 4) -> tuple[str, ...]:
+    commands: list[str] = []
+    for match in re.finditer(r"`([^`\n]+)`", text):
+        command = _redact(re.sub(r"\s+", " ", match.group(1).strip()))
+        if not command:
+            continue
+        if not command.lower().startswith(COMMAND_PREFIXES):
+            continue
+        if command not in commands:
+            commands.append(command)
+            if len(commands) >= limit:
+                break
+    return tuple(commands)
+
+
+def _observed_fact_rows(
+    *,
+    session_text: str,
+    source_sessions: tuple[str, ...],
+) -> tuple[dict[str, object], ...]:
+    rows: list[dict[str, object]] = []
+    for index, path_value in enumerate(_repo_paths_from_text(session_text, limit=6), start=1):
+        rows.append(
+            {
+                "grouping_key": f"repo-artifact-{index}",
+                "section": "Code And Docs Map",
+                "fact": f"Use `{path_value}` as a durable repo artifact for this candidate.",
+                "confidence": 0.74,
+                "provenance_sessions": list(source_sessions),
+                "repo_paths": [path_value],
+            }
+        )
+    for index, command in enumerate(_command_facts_from_text(session_text), start=1):
+        rows.append(
+            {
+                "grouping_key": f"verification-command-{index}",
+                "section": "Commands And Verification",
+                "fact": f"Use `{command}` as a reusable verification command for this candidate.",
+                "confidence": 0.76,
+                "provenance_sessions": list(source_sessions),
+                "repo_paths": list(_repo_paths_from_text(command, limit=4)),
+            }
+        )
+    return tuple(rows)
+
+
 def _candidate_fact_rows(
     *,
     scope_summary: str,
     in_scope: tuple[str, ...],
     source_sessions: tuple[str, ...],
+    session_text: str = "",
 ) -> tuple[dict[str, object], ...]:
     rows: list[dict[str, object]] = []
     rows.append(
@@ -1113,7 +1303,7 @@ def _candidate_fact_rows(
             "provenance_sessions": list(source_sessions),
         }
     )
-    seen_facts = {rows[0]["fact"]}
+    seen_facts = {str(rows[0]["fact"])}
     for index, item in enumerate(in_scope, start=1):
         fact = _sentence_case(item).rstrip(".") + "."
         if fact in seen_facts:
@@ -1129,6 +1319,12 @@ def _candidate_fact_rows(
                 "repo_paths": [],
             }
         )
+    for row in _observed_fact_rows(session_text=session_text, source_sessions=source_sessions):
+        fact = str(row["fact"])
+        if fact in seen_facts:
+            continue
+        seen_facts.add(fact)
+        rows.append(row)
     return tuple(rows)
 
 
@@ -1137,6 +1333,7 @@ def _candidate_facts_toml(
     scope_summary: str,
     in_scope: tuple[str, ...],
     source_sessions: tuple[str, ...],
+    session_text: str = "",
     fact_rows: tuple[dict[str, object], ...] | None = None,
 ) -> str:
     lines = ["facts_version = 1", ""]
@@ -1144,6 +1341,7 @@ def _candidate_facts_toml(
         scope_summary=scope_summary,
         in_scope=in_scope,
         source_sessions=source_sessions,
+        session_text=session_text,
     )
     for row in rows:
         lines.append("[[facts]]")
@@ -1178,9 +1376,19 @@ def stage_candidate_from_session(
         ignored_tokens,
     )
     proposed_candidate_id = candidate_id
-    summary = _semantic_seed_text(semantic_seed, "summary") or _candidate_summary(candidate_id, user_text, ignored_tokens)
-    raw_hints = _semantic_seed_string_list(semantic_seed, "routing_hints", limit=12) or _keywords(
-        f"{user_text}\n{assistant_text}",
+    summary = _semantic_seed_text(semantic_seed, "summary") or _candidate_summary(
+        candidate_id,
+        user_text,
+        assistant_text,
+        ignored_tokens,
+    )
+    session_text = f"{user_text}\n{assistant_text}"
+    raw_hints = _semantic_seed_string_list(semantic_seed, "routing_hints", limit=12) or _path_hints(
+        session_text,
+        ignored_tokens,
+        limit=10,
+    ) or _keywords(
+        session_text,
         limit=10,
         ignored_tokens=ignored_tokens,
     ) or (
@@ -1357,6 +1565,7 @@ def stage_candidate_from_session(
             scope_summary=scope_summary,
             in_scope=in_scope,
             source_sessions=tuple(source_sessions),
+            session_text=session_text,
             fact_rows=semantic_fact_rows or None,
         ),
         encoding="utf-8",
