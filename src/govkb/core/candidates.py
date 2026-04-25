@@ -247,6 +247,14 @@ GENERIC_CANDIDATE_TOKENS = {
     "workflow",
 }
 
+LOW_SIGNAL_CANDIDATE_TOKENS = {
+    "doc",
+    "docs",
+    "file",
+    "package",
+    "readme",
+}
+
 
 @dataclass(frozen=True)
 class CandidateStageResult:
@@ -676,7 +684,40 @@ def _domains_conflict(
         return False
     if frozenset({requested_domain, existing_domain}) in COMPATIBLE_DOMAIN_GROUPS:
         return False
+    stack_scoped = bool(requested_tokens & STACK_SIGNAL_TOKENS) and bool(existing_tokens & STACK_SIGNAL_TOKENS)
+    if stack_scoped and frozenset({requested_domain, existing_domain}) == frozenset({"backend", "frontend"}):
+        return False
     return True
+
+
+def _candidate_id_quality_score(candidate_id: str, ignored_tokens: set[str]) -> int:
+    tokens = _core_tokens([candidate_id], ignored_tokens)
+    score = len(tokens)
+    score += 3 * len(tokens & set(DOMAIN_PRIORITY_TOKENS))
+    score += 2 * len(tokens & STACK_SIGNAL_TOKENS)
+    score -= 3 * len(tokens & LOW_SIGNAL_CANDIDATE_TOKENS)
+    return score
+
+
+def _should_rekey_candidate(
+    *,
+    existing_candidate_id: str,
+    proposed_candidate_id: str,
+    matched_occurrences: int,
+    matched_status: str,
+    matched_sessions: tuple[str, ...],
+    session_id: str,
+    ignored_tokens: set[str],
+) -> bool:
+    if proposed_candidate_id == existing_candidate_id:
+        return False
+    if matched_status == "activated" or matched_occurrences > 1:
+        return False
+    if session_id in {str(item) for item in matched_sessions}:
+        return True
+    proposed_score = _candidate_id_quality_score(proposed_candidate_id, ignored_tokens)
+    existing_score = _candidate_id_quality_score(existing_candidate_id, ignored_tokens)
+    return proposed_score > existing_score
 
 
 def _remove_stale_session_candidates(governed_root: Path, keep_root: Path, session_id: str) -> None:
@@ -830,6 +871,85 @@ def _semantic_seed_identifier(seed: dict[str, Any] | None, key: str) -> str | No
     return normalized or None
 
 
+def _candidate_capability_identifier(value: str | None) -> str | None:
+    if not value:
+        return None
+    normalized = normalize_identifier(value)
+    if not normalized:
+        return None
+    if normalized.startswith("govkb-"):
+        return None
+    if normalized.endswith("project-knowledge-steward"):
+        return None
+    return normalized
+
+
+def _semantic_seed_capability_identifier(seed: dict[str, Any] | None, key: str) -> str | None:
+    return _candidate_capability_identifier(_semantic_seed_text(seed, key))
+
+
+def _local_stack_seeded_default_capability_id(
+    seeded_default_capability_id: str | None,
+    *,
+    candidate_id: str,
+    raw_hints: tuple[str, ...],
+    user_text: str,
+    ignored_tokens: set[str],
+) -> str | None:
+    if not seeded_default_capability_id or not seeded_default_capability_id.endswith("-local-stack-workflow"):
+        return seeded_default_capability_id
+    seeded_domain = seeded_default_capability_id[: -len("-local-stack-workflow")]
+    signal_tokens = set(_ordered_signal_tokens(candidate_id, raw_hints, ignored_tokens))
+    compact_user_text = re.sub(r"\s+", " ", user_text.lower())
+    user_requested_backend_stack = bool(
+        re.search(r"\bbackend\b.{0,40}\b(?:local\s+)?stack\b|\b(?:local\s+)?stack\b.{0,40}\bbackend\b", compact_user_text)
+    )
+    backend_signals = user_requested_backend_stack or bool({"backend", "dotnet"} & signal_tokens)
+    if seeded_domain == "frontend" and user_requested_backend_stack and backend_signals:
+        return "backend-local-stack-workflow"
+    return seeded_default_capability_id
+
+
+def _local_stack_intent_capability_id(
+    *,
+    candidate_id: str,
+    raw_hints: tuple[str, ...],
+    user_text: str,
+    ignored_tokens: set[str],
+) -> str | None:
+    signal_tokens = set(_ordered_signal_tokens(candidate_id, raw_hints, ignored_tokens))
+    compact_user_text = re.sub(r"\s+", " ", user_text.lower())
+    user_requested_backend_stack = bool(
+        re.search(r"\bbackend\b.{0,40}\b(?:local\s+)?stack\b|\b(?:local\s+)?stack\b.{0,40}\bbackend\b", compact_user_text)
+    )
+    if not user_requested_backend_stack:
+        return None
+    user_tokens = set(_tokenize(user_text))
+    if AUTH_ROUTING_TOKENS & (signal_tokens | user_tokens):
+        return None
+    if signal_tokens & STACK_SIGNAL_TOKENS or "stack" in user_tokens:
+        return "backend-local-stack-workflow"
+    return None
+
+
+def _semantic_seed_default_capability_id(
+    seed: dict[str, Any] | None,
+    *,
+    candidate_id: str,
+    raw_hints: tuple[str, ...],
+    user_text: str,
+    ignored_tokens: set[str],
+) -> str | None:
+    seeded_default_capability_id = _semantic_seed_capability_identifier(seed, "default_capability_id")
+    return _local_stack_seeded_default_capability_id(
+        seeded_default_capability_id,
+        candidate_id=candidate_id,
+        raw_hints=raw_hints,
+        user_text=user_text,
+        ignored_tokens=ignored_tokens,
+    )
+
+
 def _semantic_scope_metadata(seed: dict[str, Any] | None) -> tuple[str | None, tuple[str, ...], tuple[str, ...]]:
     return (
         _semantic_seed_text(seed, "scope_summary"),
@@ -913,13 +1033,17 @@ def _narrowed_summary(default_capability_id: str, summary: str) -> str:
 def candidate_default_capability_id(data: dict[str, Any], fallback_candidate_id: str) -> str:
     proposal = data.get("proposal") if isinstance(data.get("proposal"), dict) else {}
     capability_id = proposal.get("capability_id") if isinstance(proposal, dict) else None
-    if isinstance(capability_id, str) and capability_id.strip():
-        return normalize_identifier(capability_id)
+    if isinstance(capability_id, str):
+        sanitized_capability_id = _candidate_capability_identifier(capability_id)
+        if sanitized_capability_id:
+            return sanitized_capability_id
     suggestions = proposal.get("suggested_capability_ids") if isinstance(proposal, dict) else None
     if isinstance(suggestions, list):
         for item in suggestions:
-            if isinstance(item, str) and item.strip():
-                return normalize_identifier(item)
+            if isinstance(item, str):
+                sanitized_suggestion = _candidate_capability_identifier(item)
+                if sanitized_suggestion:
+                    return sanitized_suggestion
     return normalize_identifier(fallback_candidate_id)
 
 
@@ -929,8 +1053,10 @@ def candidate_suggested_capability_ids(data: dict[str, Any], fallback_candidate_
     ordered: list[str] = []
     if isinstance(suggestions, list):
         for item in suggestions:
-            if isinstance(item, str) and item.strip():
-                ordered.append(normalize_identifier(item))
+            if isinstance(item, str):
+                sanitized_suggestion = _candidate_capability_identifier(item)
+                if sanitized_suggestion:
+                    ordered.append(sanitized_suggestion)
     default_id = candidate_default_capability_id(data, fallback_candidate_id)
     ordered.append(default_id)
     ordered.append(normalize_identifier(fallback_candidate_id))
@@ -1489,7 +1615,19 @@ def stage_candidate_from_session(
     ) or (
         candidate_id.replace("-", " "),
     )
-    initial_default_capability_id = _semantic_seed_identifier(semantic_seed, "default_capability_id") or _suggested_capability_ids(
+    intent_default_capability_id = _local_stack_intent_capability_id(
+        candidate_id=candidate_id,
+        raw_hints=raw_hints,
+        user_text=user_text,
+        ignored_tokens=ignored_tokens,
+    )
+    initial_default_capability_id = _semantic_seed_default_capability_id(
+        semantic_seed,
+        candidate_id=candidate_id,
+        raw_hints=raw_hints,
+        user_text=user_text,
+        ignored_tokens=ignored_tokens,
+    ) or intent_default_capability_id or _suggested_capability_ids(
         candidate_id,
         raw_hints,
         ignored_tokens,
@@ -1508,11 +1646,14 @@ def stage_candidate_from_session(
             matched_occurrences = int(existing.get("occurrences") or 0)
             matched_status = str(existing.get("status") or "")
             rekey_target = governed_root / "candidates" / proposed_candidate_id
-            if (
-                proposed_candidate_id != candidate_id
-                and matched_status != "activated"
-                and matched_occurrences <= 1
-                and session_id in {str(item) for item in matched_sessions}
+            if _should_rekey_candidate(
+                existing_candidate_id=candidate_id,
+                proposed_candidate_id=proposed_candidate_id,
+                matched_occurrences=matched_occurrences,
+                matched_status=matched_status,
+                matched_sessions=tuple(str(item) for item in matched_sessions),
+                session_id=session_id,
+                ignored_tokens=ignored_tokens,
             ):
                 if rekey_target.exists():
                     merged_existing = _read_existing(rekey_target / "candidate.toml")
@@ -1536,11 +1677,14 @@ def stage_candidate_from_session(
             matched_occurrences = int(existing.get("occurrences") or 0)
             matched_status = str(existing.get("status") or "")
             rekey_target = governed_root / "candidates" / proposed_candidate_id
-            if (
-                proposed_candidate_id != candidate_id
-                and matched_status != "activated"
-                and matched_occurrences <= 1
-                and session_id in {str(item) for item in matched_sessions}
+            if _should_rekey_candidate(
+                existing_candidate_id=candidate_id,
+                proposed_candidate_id=proposed_candidate_id,
+                matched_occurrences=matched_occurrences,
+                matched_status=matched_status,
+                matched_sessions=tuple(str(item) for item in matched_sessions),
+                session_id=session_id,
+                ignored_tokens=ignored_tokens,
             ):
                 if rekey_target.exists():
                     merged_existing = _read_existing(rekey_target / "candidate.toml")
@@ -1578,6 +1722,8 @@ def stage_candidate_from_session(
         legacy_suggestions = proposal.get("suggested_capability_ids") if isinstance(proposal, dict) else None
         existing_default_capability_id = candidate_default_capability_id(existing, candidate_id)
         refresh_proposal = _should_refresh_proposal(candidate_id, existing_default_capability_id, hints, ignored_tokens)
+        if intent_default_capability_id and existing_default_capability_id != intent_default_capability_id:
+            refresh_proposal = True
         if (
             not isinstance(legacy_suggestions, list)
             or not any(isinstance(item, str) and item.strip() for item in legacy_suggestions)
@@ -1585,10 +1731,17 @@ def stage_candidate_from_session(
             or semantic_seed is not None
         ):
             suggested_capability_ids = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)
-            seeded_default_capability_id = _semantic_seed_identifier(semantic_seed, "default_capability_id")
-            if seeded_default_capability_id:
+            seeded_default_capability_id = _semantic_seed_default_capability_id(
+                semantic_seed,
+                candidate_id=candidate_id,
+                raw_hints=raw_hints,
+                user_text=user_text,
+                ignored_tokens=ignored_tokens,
+            )
+            default_capability_override = seeded_default_capability_id or intent_default_capability_id
+            if default_capability_override:
                 suggested_capability_ids = tuple(
-                    dict.fromkeys((seeded_default_capability_id, *suggested_capability_ids))
+                    dict.fromkeys((default_capability_override, *suggested_capability_ids))
                 )
             default_capability_id = suggested_capability_ids[0]
         else:
@@ -1622,9 +1775,16 @@ def stage_candidate_from_session(
             out_of_scope = seeded_out_of_scope or out_of_scope
     else:
         suggested_capability_ids = _suggested_capability_ids(candidate_id, raw_hints, ignored_tokens)
-        seeded_default_capability_id = _semantic_seed_identifier(semantic_seed, "default_capability_id")
-        if seeded_default_capability_id:
-            suggested_capability_ids = tuple(dict.fromkeys((seeded_default_capability_id, *suggested_capability_ids)))
+        seeded_default_capability_id = _semantic_seed_default_capability_id(
+            semantic_seed,
+            candidate_id=candidate_id,
+            raw_hints=raw_hints,
+            user_text=user_text,
+            ignored_tokens=ignored_tokens,
+        )
+        default_capability_override = seeded_default_capability_id or intent_default_capability_id
+        if default_capability_override:
+            suggested_capability_ids = tuple(dict.fromkeys((default_capability_override, *suggested_capability_ids)))
         default_capability_id = suggested_capability_ids[0]
         hints = _canonical_routing_hints(default_capability_id, raw_hints, ignored_tokens)
         summary = _narrowed_summary(default_capability_id, summary)

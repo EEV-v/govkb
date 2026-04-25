@@ -1184,6 +1184,8 @@ Strict policy:
 - Return `semantic_candidate = null` when the session clearly belongs to an existing capability or is not durable.
 - When the session reveals reusable unmatched knowledge, populate `semantic_candidate` from task meaning and observed outcomes, not raw prompt tokenization.
 - Prefer short semantic ids such as `auth-e2e-workflow`, `backend-local-stack-workflow`, or `release-validation-workflow`.
+- Preserve the user's primary intent when naming semantic candidates; for example, keep a backend local-stack request under `backend-local-stack-workflow` even if frontend package scripts are only used as sanity checks.
+- `semantic_candidate.default_capability_id` must be a new repo-local capability id, not an existing materialized skill id such as `govkb-...` and not the broad project knowledge steward.
 - `semantic_candidate.facts` must contain concise governed facts with repo-relative paths only when paths are actually relevant.
 
 Available memory targets:

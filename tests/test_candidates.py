@@ -373,6 +373,214 @@ sessions = ["backend-workflow"]
             self.assertIn('docs/release/release-notes.md', facts_text)
             self.assertNotIn("Please summarize the work we just did", facts_text)
 
+    def test_stage_candidate_merges_cross_stack_semantic_split(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "backend-dotnet").mkdir(parents=True, exist_ok=True)
+            (project_root / "app" / "frontend").mkdir(parents=True, exist_ok=True)
+            (project_root / "docker-compose.yml").write_text("services: {}\n", encoding="utf-8")
+            (project_root / "docker-compose.dev.yml").write_text("services: {}\n", encoding="utf-8")
+            (project_root / "backend-dotnet" / "README.md").write_text("# Backend\n", encoding="utf-8")
+            (project_root / "app" / "frontend" / "package.json").write_text(
+                '{"scripts":{"test":"vitest","build":"vite build"}}\n',
+                encoding="utf-8",
+            )
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            first_session = Path(temp_dir) / "stack-one.jsonl"
+            second_session = Path(temp_dir) / "stack-two.jsonl"
+            request = (
+                "Act as a real GovKB-enabled ExampleApp user. Inspect repo files only. "
+                "I need to bring up or verify the backend local stack, including frontend sanity commands if present."
+            )
+            _write_session(
+                first_session,
+                "stack-one",
+                project_root,
+                request,
+                assistant_message=(
+                    "Use docker-compose.yml with docker-compose.dev.yml, run dotnet test, "
+                    "then run npm test and npm run build under app/frontend."
+                ),
+            )
+            _write_session(
+                second_session,
+                "stack-two",
+                project_root,
+                request,
+                assistant_message=(
+                    "Reuse the same compose workflow, backend dotnet test, and frontend package sanity checks."
+                ),
+            )
+            first_seed = Path(temp_dir) / "first-seed.json"
+            first_seed.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "readme-package-workflow",
+                        "default_capability_id": "frontend-local-stack-workflow",
+                        "summary": "Repeated work around frontend local stack workflow may need a dedicated governed capability.",
+                        "routing_hints": ["frontend", "compose", "docker", "ports", "stack", "startup", "workflow"],
+                        "scope_summary": "Local frontend stack orchestration, compose entrypoints, effective ports, and startup/debug behavior.",
+                        "in_scope": [
+                            "stack entrypoint selection across top-level and service-local compose files",
+                            "effective localhost ports, service URLs, and container-facing endpoints",
+                        ],
+                        "out_of_scope": [
+                            "feature implementation inside the frontend service once the stack is already running",
+                        ],
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            second_seed = Path(temp_dir) / "second-seed.json"
+            second_seed.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "backend-frontend-workflow",
+                        "default_capability_id": "frontend-local-stack-workflow",
+                        "summary": "Repeated work around backend local stack workflow may need a dedicated governed capability.",
+                        "routing_hints": ["backend", "compose", "docker", "ports", "stack", "startup", "workflow", "dotnet"],
+                        "scope_summary": "Local backend stack orchestration, compose entrypoints, effective ports, and startup/debug behavior.",
+                        "in_scope": [
+                            "stack entrypoint selection across top-level and service-local compose files",
+                            "startup order, health checks, and readiness verification",
+                        ],
+                        "out_of_scope": [
+                            "feature implementation inside the backend service once the stack is already running",
+                        ],
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=first_session,
+                        semantic_seed_file=first_seed,
+                    )
+                ),
+                0,
+            )
+            _, first_candidate = load_candidate(project_root, "readme-package-workflow")
+            self.assertEqual(first_candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=second_session,
+                        semantic_seed_file=second_seed,
+                    )
+                ),
+                0,
+            )
+
+            candidates_root = project_root / ".governed" / "candidates"
+            self.assertFalse((candidates_root / "readme-package-workflow").exists())
+            _, candidate = load_candidate(project_root, "backend-frontend-workflow")
+            self.assertEqual(candidate["status"], "ready-for-review")
+            self.assertEqual(candidate["occurrences"], 2)
+            self.assertEqual(candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
+            self.assertEqual(candidate["source"]["sessions"], ["stack-one", "stack-two"])
+
+    def test_stage_candidate_ignores_materialized_steward_default_from_semantic_seed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            session_path = Path(temp_dir) / "backend-stack.jsonl"
+            _write_session(
+                session_path,
+                "backend-stack",
+                project_root,
+                "Capture the reusable backend local stack workflow with compose and dotnet verification.",
+            )
+            seed_path = Path(temp_dir) / "semantic-seed.json"
+            seed_path.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "backend-frontend-workflow",
+                        "default_capability_id": "govkb-example-app-project-knowledge-steward",
+                        "summary": "Reusable workflow for bringing up and verifying the backend local stack.",
+                        "routing_hints": ["backend", "compose", "docker", "ports", "stack", "startup", "workflow", "dotnet"],
+                        "scope_summary": "Backend local stack startup and verification workflow.",
+                        "in_scope": ["compose startup", "backend health checks", "dotnet verification"],
+                        "out_of_scope": ["project-wide stewardship"],
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=session_path,
+                        semantic_seed_file=seed_path,
+                    )
+                ),
+                0,
+            )
+
+            _, candidate = load_candidate(project_root, "backend-frontend-workflow")
+            self.assertEqual(candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
+            self.assertNotIn("govkb-example-app-project-knowledge-steward", candidate["proposal"]["suggested_capability_ids"])
+
+    def test_stage_candidate_preserves_backend_stack_intent_without_semantic_seed(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "app" / "frontend").mkdir(parents=True, exist_ok=True)
+            (project_root / "app" / "frontend" / "package.json").write_text(
+                '{"scripts":{"test":"vitest"}}\n',
+                encoding="utf-8",
+            )
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            session_path = Path(temp_dir) / "backend-stack.jsonl"
+            _write_session(
+                session_path,
+                "backend-stack",
+                project_root,
+                (
+                    "I need to bring up or verify the backend local stack. "
+                    "Return backend test and frontend sanity commands if present."
+                ),
+                assistant_message=(
+                    "Use docker compose for the stack and app/frontend/package.json for sanity checks."
+                ),
+            )
+
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(
+                        candidate_action="stage",
+                        project_root=project_root,
+                        assistant="codex",
+                        session_file=session_path,
+                    )
+                ),
+                0,
+            )
+
+            _, candidate = load_candidate(project_root, "frontend-package-workflow")
+            self.assertEqual(candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
+
     def test_stage_candidate_uses_repo_artifacts_for_mixed_language_non_coding_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "ExampleApp"
@@ -813,6 +1021,89 @@ sessions = ["backend-workflow"]
             _, activated_candidate = load_candidate(project_root, "backend-workflow")
             self.assertEqual(activated_candidate["status"], "activated")
             self.assertEqual(activated_candidate["proposal"]["capability_id"], "backend-local-stack-workflow")
+
+    def test_create_capability_uses_scope_as_working_agreement_when_seed_has_no_working_fact(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+
+            first_session = Path(temp_dir) / "backend-stack-one.jsonl"
+            second_session = Path(temp_dir) / "backend-stack-two.jsonl"
+            _write_session(
+                first_session,
+                "backend-stack-one",
+                project_root,
+                "Capture the reusable backend local stack workflow.",
+            )
+            _write_session(
+                second_session,
+                "backend-stack-two",
+                project_root,
+                "Repeat the backend local stack workflow.",
+            )
+            seed_path = Path(temp_dir) / "semantic-seed.json"
+            seed_path.write_text(
+                json.dumps(
+                    {
+                        "candidate_id": "backend-local-stack-workflow",
+                        "default_capability_id": "backend-local-stack-workflow",
+                        "summary": "Reusable backend local stack workflow.",
+                        "routing_hints": ["backend", "compose", "docker", "stack", "workflow"],
+                        "scope_summary": "Backend local stack startup and verification workflow.",
+                        "in_scope": ["compose startup", "backend health checks"],
+                        "out_of_scope": ["project-wide stewardship"],
+                        "facts": [
+                            {
+                                "section": "Stable Workflows",
+                                "fact": "Use the compose workflow for backend local stack startup.",
+                                "confidence": 0.9,
+                                "repo_paths": [],
+                            }
+                        ],
+                    },
+                    indent=2,
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            for session_file in (first_session, second_session):
+                self.assertEqual(
+                    run_candidates(
+                        argparse.Namespace(
+                            candidate_action="stage",
+                            project_root=project_root,
+                            assistant="codex",
+                            session_file=session_file,
+                            semantic_seed_file=seed_path,
+                        )
+                    ),
+                    0,
+                )
+
+            create_exit = run_create_capability(
+                argparse.Namespace(
+                    capability_id=None,
+                    project_root=project_root,
+                    from_candidate="backend-local-stack-workflow",
+                )
+            )
+
+            self.assertEqual(create_exit, 0)
+            memory_text = (
+                project_root
+                / ".governed"
+                / "capabilities"
+                / "backend-local-stack-workflow"
+                / "references"
+                / "long-term-memory.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn(
+                "- Keep this capability focused on Backend local stack startup and verification workflow.",
+                memory_text,
+            )
+            self.assertNotIn("Use this section for stable capability-specific operating rules", memory_text)
 
     def test_auto_create_ready_respects_disabled_policy(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

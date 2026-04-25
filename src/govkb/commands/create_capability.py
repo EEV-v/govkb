@@ -148,7 +148,10 @@ def _candidate_memory_text(candidate_root: Path, capability_id: str, candidate_d
         if facts:
             lines.extend(f"- {fact}" for fact in facts)
         elif section == "Working Agreement":
-            lines.append("- Use this section for stable capability-specific operating rules after activation.")
+            if isinstance(scope_summary, str) and scope_summary.strip():
+                lines.append(f"- Keep this capability focused on {scope_summary.strip().rstrip('.')}.")
+            else:
+                lines.append("- Keep this capability focused on the reusable workflow captured by the activated candidate.")
         elif section == "Stable Workflows":
             lines.append("- Use this section for recurring project workflow patterns observed across sessions.")
         elif section == "Commands And Verification":
