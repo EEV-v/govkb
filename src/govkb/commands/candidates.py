@@ -21,6 +21,37 @@ from govkb.core.project import resolve_project_root
 from govkb.commands.create_capability import run_create_capability
 
 
+def _candidate_summary(candidate_root: Path, data: dict[str, object]) -> dict[str, object]:
+    proposal = data.get("proposal") if isinstance(data.get("proposal"), dict) else {}
+    suggested = proposal.get("capability_id") if isinstance(proposal, dict) else None
+    status = data.get("status")
+    candidate_id = data.get("id")
+    occurrences = data.get("occurrences")
+    normalized_status = status.strip() if isinstance(status, str) else "unknown"
+    return {
+        "id": candidate_id if isinstance(candidate_id, str) and candidate_id else candidate_root.name,
+        "status": normalized_status,
+        "occurrences": occurrences if isinstance(occurrences, int) and not isinstance(occurrences, bool) else 0,
+        "suggestedCapabilityId": suggested if isinstance(suggested, str) and suggested else None,
+        "activationState": "activated" if normalized_status == "activated" else "not-activated",
+        "path": str(candidate_root),
+    }
+
+
+def build_candidates_payload(project_root: Path) -> dict[str, object]:
+    """Build the machine-readable candidate list payload."""
+    resolved_root = Path(project_root).resolve()
+    candidates: list[dict[str, object]] = []
+    for candidate_root in list_candidates(resolved_root):
+        data = tomllib.loads((candidate_root / "candidate.toml").read_text(encoding="utf-8"))
+        candidates.append(_candidate_summary(candidate_root, data))
+    return {
+        "schemaVersion": 1,
+        "projectRoot": str(resolved_root),
+        "candidates": candidates,
+    }
+
+
 def run_candidates(args) -> int:
     """Run candidate subcommands."""
     action = getattr(args, "candidate_action", "")
@@ -71,6 +102,10 @@ def _run_stage(args) -> int:
 
 def _run_list(args) -> int:
     project_root = Path(args.project_root).resolve()
+    if getattr(args, "json", False):
+        print(json.dumps(build_candidates_payload(project_root), indent=2, sort_keys=True))
+        return 0
+
     candidates = list_candidates(project_root)
     if not candidates:
         print("No candidates found.")

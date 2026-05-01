@@ -1,0 +1,142 @@
+# Current GovKB CLI Baseline
+
+Working directory: /home/ev/code/govkb
+
+## govkb --help
+usage: govkb [-h]
+             {init,install,validate,init-kb,apply,status,review-memory,candidates,promote,create}
+             ...
+
+Governed knowledge tooling.
+
+positional arguments:
+  {init,install,validate,init-kb,apply,status,review-memory,candidates,promote,create}
+    init                Scaffold a project .governed package.
+    install             Install governed support into a project.
+    validate            Validate a project .governed package.
+    init-kb             Bootstrap governed capability knowledge base files.
+    apply               Materialize governed content into an assistant target.
+    status              Show governed package and local state summary.
+    review-memory       Run assistant memory review.
+    candidates          Inspect or stage governed capability candidates.
+    promote             Promote safe local governed assistant memory changes
+                        into the repo package.
+    create              Scaffold governed objects.
+
+options:
+  -h, --help            show this help message and exit
+
+## govkb install --help
+usage: govkb install [-h] [--project-id PROJECT_ID]
+                     [--project-name PROJECT_NAME] [--codex-home CODEX_HOME]
+                     [--release RELEASE] [--revision REVISION] [--preview]
+                     [--cron] [--schedule SCHEDULE]
+                     [project_root]
+
+positional arguments:
+  project_root          Project root to install into.
+
+options:
+  -h, --help            show this help message and exit
+  --project-id PROJECT_ID
+                        Explicit governed project id when scaffolding.
+  --project-name PROJECT_NAME
+                        Explicit governed project name when scaffolding.
+  --codex-home CODEX_HOME
+                        Codex home override for local materialization.
+  --release RELEASE     Release id to apply.
+  --revision REVISION   Git revision override.
+  --preview             Show install actions without changing files.
+  --cron                Install a project-scoped memory-review cron job.
+  --schedule SCHEDULE   Cron schedule used with --cron.
+
+## govkb init-kb --help
+usage: govkb init-kb [-h] [--capability CAPABILITY] [--all]
+                     [--codex-home CODEX_HOME]
+                     [project_root]
+
+positional arguments:
+  project_root          Project root to bootstrap.
+
+options:
+  -h, --help            show this help message and exit
+  --capability CAPABILITY
+                        Bootstrap one capability id.
+  --all                 Bootstrap all governed capabilities.
+  --codex-home CODEX_HOME
+                        Codex home override for local rematerialization after
+                        KB bootstrap.
+
+## govkb status --help
+usage: govkb status [-h] [--codex-home CODEX_HOME] [project_root]
+
+positional arguments:
+  project_root          Project root to inspect.
+
+options:
+  -h, --help            show this help message and exit
+  --codex-home CODEX_HOME
+                        Codex home override for install-state inspection.
+
+## govkb apply codex --help
+usage: govkb apply codex [-h] [--project-root PROJECT_ROOT]
+                         [--release RELEASE] [--revision REVISION]
+                         [--codex-home CODEX_HOME] [--preview]
+
+options:
+  -h, --help            show this help message and exit
+  --project-root PROJECT_ROOT
+                        Project root to apply from.
+  --release RELEASE     Release id to apply.
+  --revision REVISION   Git revision override.
+  --codex-home CODEX_HOME
+                        Codex home override for local materialization.
+  --preview             Show what would be applied without materializing
+                        files.
+
+## govkb review-memory --help
+usage: govkb review-memory [-h] --assistant {codex}
+                           [--project-root PROJECT_ROOT] [--dry-run]
+                           [--lookback-days LOOKBACK_DAYS]
+                           [--max-sessions MAX_SESSIONS] [--verbose]
+                           [--codex-timeout CODEX_TIMEOUT]
+                           [--classifier-codex-home CLASSIFIER_CODEX_HOME]
+                           [--codex-model CODEX_MODEL]
+                           [--codex-reasoning {low,medium,high,xhigh}]
+                           [--session-file SESSION_FILE] [--no-auto-promote]
+
+options:
+  -h, --help            show this help message and exit
+  --assistant {codex}   Assistant to review.
+  --project-root PROJECT_ROOT
+                        Project root to inspect.
+  --dry-run             Generate reports and patches without editing memory.
+  --lookback-days LOOKBACK_DAYS
+                        Override incremental selection window.
+  --max-sessions MAX_SESSIONS
+                        Maximum sessions to classify in one run.
+  --verbose             Write sanitized classifier inputs to the memory-review
+                        log dir.
+  --codex-timeout CODEX_TIMEOUT
+                        Per-session codex exec timeout in seconds.
+  --classifier-codex-home CLASSIFIER_CODEX_HOME
+                        Codex home used only for nested classifier
+                        auth/config; output state still uses CODEX_HOME.
+  --codex-model CODEX_MODEL
+                        Codex model used for nested semantic classification.
+  --codex-reasoning {low,medium,high,xhigh}
+                        Codex reasoning effort used for nested semantic
+                        classification.
+  --session-file SESSION_FILE
+                        Classify one explicit session JSONL file.
+  --no-auto-promote     Do not promote safe governed memory changes back into
+                        the repo after apply.
+
+## govkb candidates list --help
+usage: govkb candidates list [-h] [project_root]
+
+positional arguments:
+  project_root  Project root to inspect.
+
+options:
+  -h, --help    show this help message and exit

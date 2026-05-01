@@ -1,0 +1,10 @@
+[adapter]
+id = "codex"
+local_state_key = "govkb/codex"
+materialization_targets = ["skills", "memory-review"]
+
+[governance]
+min_confidence_floor = 0.85
+
+[routing]
+aliases = []

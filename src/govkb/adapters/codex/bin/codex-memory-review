@@ -1254,6 +1254,22 @@ def is_classifier_environment_error(text: str) -> bool:
     return any(pattern.search(text) for pattern in CLASSIFIER_ENVIRONMENT_PATTERNS)
 
 
+def subprocess_timeout_output(exc: subprocess.TimeoutExpired) -> str:
+    parts: list[str] = []
+    for label, value in (("stdout", exc.stdout), ("stderr", exc.stderr)):
+        if value is None:
+            continue
+        if isinstance(value, bytes):
+            text = value.decode("utf-8", errors="replace")
+        else:
+            text = str(value)
+        if text.strip():
+            parts.append(f"{label}: {text.strip()}")
+    if not parts:
+        return ""
+    return compact_text("\n".join(parts), limit=2000).replace("\n", " | ")
+
+
 def classify_session(
     session: SessionRef,
     targets: dict[str, MemoryTarget],
@@ -1304,7 +1320,20 @@ def classify_session(
         try:
             proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout, env=env)
         except subprocess.TimeoutExpired as exc:
-            raise TimeoutClassificationError(f"codex classifier timed out after {timeout} seconds; retry later") from exc
+            details = [
+                f"codex classifier timed out after {timeout} seconds for session {session.id}",
+                f"thread={session.thread_name}",
+                f"session_file={session.path}",
+                f"classifier_workdir={classifier_workdir}",
+                f"classifier_codex_home={classifier_home}",
+                f"model={model or 'default'}",
+                f"reasoning={reasoning or 'default'}",
+            ]
+            partial_output = subprocess_timeout_output(exc)
+            if partial_output:
+                details.append(f"partial_classifier_output={partial_output}")
+            details.append("retry later or increase the review timeout")
+            raise TimeoutClassificationError("; ".join(details)) from exc
         if proc.returncode != 0:
             error_text = "\n".join(part for part in (proc.stderr, proc.stdout) if part).strip()
             if is_usage_limit_error(error_text):

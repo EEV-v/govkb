@@ -65,6 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser = subparsers.add_parser("status", help="Show governed package and local state summary.")
     status_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
     status_parser.add_argument("--codex-home", type=Path, help="Codex home override for install-state inspection.")
+    status_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for extension integrations.")
     status_parser.set_defaults(handler=run_status)
 
     review_parser = subparsers.add_parser("review-memory", help="Run assistant memory review.")
@@ -112,6 +113,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     candidates_list_parser = candidates_subparsers.add_parser("list", help="List staged capability candidates.")
     candidates_list_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    candidates_list_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for extension integrations.")
     candidates_list_parser.set_defaults(handler=run_candidates)
 
     candidates_auto_parser = candidates_subparsers.add_parser(

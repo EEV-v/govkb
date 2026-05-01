@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": "/tmp/govkb-poc/project",
+  "governedRoot": "/tmp/govkb-poc/project/.governed",
+  "project": {
+    "id": "demo-project",
+    "currentRelease": "unreleased"
+  },
+  "validation": {
+    "status": "ok",
+    "warnings": [],
+    "errors": []
+  },
+  "kbHealth": {
+    "warnings": [],
+    "suggestedRemediation": null
+  },
+  "capabilities": [
+    {
+      "id": "project-knowledge-steward",
+      "name": "Project Knowledge Steward",
+      "governed": true
+    }
+  ],
+  "adapters": [
+    "codex"
+  ],
+  "releases": [],
+  "installState": {
+    "codex": {
+      "status": "missing",
+      "statePath": "/tmp/govkb-poc/codex-home/memories/govkb/install-state/demo-project--codex.json",
+      "appliedRevision": null,
+      "appliedRelease": null,
+      "appliedAt": null,
+      "materializedCapabilities": []
+    }
+  }
+}
+

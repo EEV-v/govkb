@@ -1,0 +1,340 @@
+test_install_cron_updates_existing_project_job_when_codex_home_changes (tests.test_install.InstallCommandTests.test_install_cron_updates_existing_project_job_when_codex_home_changes) ... ok
+test_install_preview_does_not_create_governed_package (tests.test_install.InstallCommandTests.test_install_preview_does_not_create_governed_package) ... ok
+test_install_scaffolds_validates_and_applies_codex (tests.test_install.InstallCommandTests.test_install_scaffolds_validates_and_applies_codex) ... ok
+test_apply_does_not_preserve_scaffold_placeholder_bullets (tests.test_apply.ApplyCommandTests.test_apply_does_not_preserve_scaffold_placeholder_bullets) ... ok
+test_apply_keeps_same_capability_ids_separate_across_projects (tests.test_apply.ApplyCommandTests.test_apply_keeps_same_capability_ids_separate_across_projects) ... ok
+test_apply_materializes_skill_and_install_state (tests.test_apply.ApplyCommandTests.test_apply_materializes_skill_and_install_state) ... ok
+test_apply_preserves_local_memory_additions_when_rematerializing (tests.test_apply.ApplyCommandTests.test_apply_preserves_local_memory_additions_when_rematerializing) ... ok
+test_apply_uses_migration_fallback_when_repo_files_are_missing (tests.test_apply.ApplyCommandTests.test_apply_uses_migration_fallback_when_repo_files_are_missing) ... ok
+test_preview_does_not_write_install_state (tests.test_apply.ApplyCommandTests.test_preview_does_not_write_install_state) ... ok
+test_init_kb_bootstraps_one_capability_from_repo_facts (tests.test_init_kb.InitKBCommandTests.test_init_kb_bootstraps_one_capability_from_repo_facts) ... ok
+test_init_kb_rematerializes_existing_codex_install (tests.test_init_kb.InitKBCommandTests.test_init_kb_rematerializes_existing_codex_install) ... Project root: /tmp/tmpbvcli2vq/DemoProject
+Codex home: /tmp/tmpbvcli2vq/codex-home
+Mode: preview
+Memory review task: will install /tmp/tmpbvcli2vq/codex-home/bin/codex-memory-review
+Will scaffold /tmp/tmpbvcli2vq/DemoProject/.governed
+Project id: demo-project
+Validation: skipped because .governed would be created in apply mode
+Apply: skipped because this is preview
+Cron: skipped; pass --cron to install the project-scoped memory-review job
+Done.
+Project root: /tmp/tmpzzjv_5_u/DemoProject
+Codex home: /tmp/tmpzzjv_5_u/codex-home
+Mode: apply
+Memory review task: will install /tmp/tmpzzjv_5_u/codex-home/bin/codex-memory-review
+Memory review task: installed /tmp/tmpzzjv_5_u/codex-home/bin/codex-memory-review
+Will scaffold /tmp/tmpzzjv_5_u/DemoProject/.governed
+Project id: demo-project
+Scaffolded /tmp/tmpzzjv_5_u/DemoProject/.governed
+Validation passed: capabilities=1 adapters=1 releases=0
+Applied Codex materialization: 1 skill(s)
+Install state: /tmp/tmpzzjv_5_u/codex-home/memories/govkb/install-state/demo-project--codex.json
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmpzzjv_5_u/codex-home/skills/govkb-demo-project-project-knowledge-steward
+Cron: skipped; pass --cron to install the project-scoped memory-review job
+Done.
+Scaffolded /tmp/tmp9ffe7hqz/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: first-pass
+Codex home: /tmp/tmp9ffe7hqz/codex-home
+Install state: /tmp/tmp9ffe7hqz/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities materialized: 1
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmp9ffe7hqz/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: second-pass
+Codex home: /tmp/tmp9ffe7hqz/codex-home
+Install state: /tmp/tmp9ffe7hqz/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities materialized: 1
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmp9ffe7hqz/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4; backup=/tmp/tmp9ffe7hqz/codex-home/memories/govkb/backups/demo-project/codex/20260425T185731.853833Z/project-knowledge-steward)
+warning: existing local skill will be replaced on apply: /tmp/tmp9ffe7hqz/codex-home/skills/govkb-demo-project-project-knowledge-steward
+Scaffolded /tmp/tmphi67atv9/FirstProject/.governed
+Project id: first-project
+Next step: govkb validate
+Scaffolded /tmp/tmphi67atv9/SecondProject/.governed
+Project id: second-project
+Next step: govkb validate
+Project: first-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: first
+Codex home: /tmp/tmphi67atv9/codex-home
+Install state: /tmp/tmphi67atv9/codex-home/memories/govkb/install-state/first-project--codex.json
+Capabilities materialized: 1
+- project-knowledge-steward -> govkb-first-project-project-knowledge-steward: /tmp/tmphi67atv9/codex-home/skills/govkb-first-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+Project: second-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: second
+Codex home: /tmp/tmphi67atv9/codex-home
+Install state: /tmp/tmphi67atv9/codex-home/memories/govkb/install-state/second-project--codex.json
+Capabilities materialized: 1
+- project-knowledge-steward -> govkb-second-project-project-knowledge-steward: /tmp/tmphi67atv9/codex-home/skills/govkb-second-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+Scaffolded /tmp/tmp_22blamz/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Created capability scaffold: /tmp/tmp_22blamz/DemoProject/.governed/capabilities/workflow-review
+Project: demo-project
+Assistant: codex
+Selected release: 2026.04.22
+Selected revision: abc1234
+Codex home: /tmp/tmp_22blamz/codex-home
+Install state: /tmp/tmp_22blamz/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities materialized: 2
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmp_22blamz/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+- workflow-review -> govkb-demo-project-workflow-review: /tmp/tmp_22blamz/codex-home/skills/govkb-demo-project-workflow-review (source=repo+repo-instructions; files=4)
+Scaffolded /tmp/tmpm2deipmu/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: first-pass
+Codex home: /tmp/tmpm2deipmu/codex-home
+Install state: /tmp/tmpm2deipmu/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities materialized: 1
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmpm2deipmu/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+Created capability scaffold: /tmp/tmpm2deipmu/DemoProject/.governed/capabilities/workflow-review
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: second-pass
+Codex home: /tmp/tmpm2deipmu/codex-home
+Install state: /tmp/tmpm2deipmu/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities materialized: 2
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmpm2deipmu/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4; backup=/tmp/tmpm2deipmu/codex-home/memories/govkb/backups/demo-project/codex/20260425T185731.887821Z/project-knowledge-steward)
+- workflow-review -> govkb-demo-project-workflow-review: /tmp/tmpm2deipmu/codex-home/skills/govkb-demo-project-workflow-review (source=repo+repo-instructions; files=4)
+warning: existing local skill will be replaced on apply: /tmp/tmpm2deipmu/codex-home/skills/govkb-demo-project-project-knowledge-steward
+Scaffolded /tmp/tmp0hp8k9k4/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: fallback-test
+Codex home: /tmp/tmp0hp8k9k4/codex-home
+Install state: /tmp/tmp0hp8k9k4/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities materialized: 2
+- migrated-capability -> govkb-demo-project-migrated-capability: /tmp/tmp0hp8k9k4/codex-home/skills/govkb-demo-project-migrated-capability (source=migration-fallback+migration-skill; files=3)
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmp0hp8k9k4/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+Scaffolded /tmp/tmpkfkjlysw/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Created capability scaffold: /tmp/tmpkfkjlysw/DemoProject/.governed/capabilities/workflow-review
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: unresolved
+Codex home: /tmp/tmpkfkjlysw/codex-home
+Install state: /tmp/tmpkfkjlysw/codex-home/memories/govkb/install-state/demo-project--codex.json
+Capabilities planned: 2
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmpkfkjlysw/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+- workflow-review -> govkb-demo-project-workflow-review: /tmp/tmpkfkjlysw/codex-home/skills/govkb-demo-project-workflow-review (source=repo+repo-instructions; files=4)
+Scaffolded /tmp/tmpn07544h_/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Created capability scaffold: /tmp/tmpn07544h_/DemoProject/.governed/capabilities/backend-local-stack-workflow
+Scaffolded /tmp/tmpn8qgu7jh/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Project: demo-project
+Assistant: codex
+Selected release: unreleased
+Selected revision: unresolved
+Codex home: /tmp/tmpn8qgu7jh/codex-home
+Install state: /tmp/tmpn8qgu7jh/codex-home/memories/govkb/install-state/demo-project--codex.jsonok
+test_orgchart_like_steward_bootstrap_populates_stable_workflows (tests.test_init_kb.InitKBCommandTests.test_orgchart_like_steward_bootstrap_populates_stable_workflows) ... ok
+test_status_reports_thin_kb_warnings_until_bootstrapped (tests.test_init_kb.InitKBCommandTests.test_status_reports_thin_kb_warnings_until_bootstrapped) ... ok
+test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist (tests.test_candidates.CandidateCommandTests.test_auth_candidate_does_not_blacklist_own_domain_when_backend_hints_exist) ... ok
+test_auto_create_ready_creates_capability_and_materializes_codex (tests.test_candidates.CandidateCommandTests.test_auto_create_ready_creates_capability_and_materializes_codex) ... ok
+test_auto_create_ready_respects_disabled_policy (tests.test_candidates.CandidateCommandTests.test_auto_create_ready_respects_disabled_policy) ... ok
+test_backend_session_does_not_merge_into_existing_auth_candidate (tests.test_candidates.CandidateCommandTests.test_backend_session_does_not_merge_into_existing_auth_candidate) ... ok
+test_candidate_compact_redacts_api_keys (tests.test_candidates.CandidateCommandTests.test_candidate_compact_redacts_api_keys) ... ok
+test_create_capability_rolls_back_when_generated_contract_is_invalid (tests.test_candidates.CandidateCommandTests.test_create_capability_rolls_back_when_generated_contract_is_invalid) ... error: /tmp/tmpt35s8yg_/DemoProject/.governed/capabilities/workflow-audit/capability.contract.toml: missing table: routing
+error: /tmp/tmpt35s8yg_/DemoProject/.governed/capabilities/workflow-audit/capability.contract.toml: missing table: memory
+error: /tmp/tmpt35s8yg_/DemoProject/.governed/capabilities/workflow-audit/capability.contract.toml: missing table: bootstrap
+error: /tmp/tmpt35s8yg_/DemoProject/.governed/capabilities/workflow-audit/capability.contract.toml: missing table: kb_health
+ok
+test_create_capability_uses_scope_as_working_agreement_when_seed_has_no_working_fact (tests.test_candidates.CandidateCommandTests.test_create_capability_uses_scope_as_working_agreement_when_seed_has_no_working_fact) ... ok
+test_create_capability_uses_suggested_name_when_candidate_id_is_omitted (tests.test_candidates.CandidateCommandTests.test_create_capability_uses_suggested_name_when_candidate_id_is_omitted) ... 
+Capabilities materialized: 1
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmpn8qgu7jh/codex-home/skills/govkb-demo-project-project-knowledge-steward (source=repo+repo-instructions; files=4)
+Scaffolded /tmp/tmp7rdhkza5/OrgChart/.governed
+Project id: orgchart
+Next step: govkb validate
+Capability: project-knowledge-steward
+Memory: /tmp/tmp7rdhkza5/OrgChart/.governed/capabilities/project-knowledge-steward/references/long-term-memory.md
+Added bullets:
+- Stable Workflows: Primary .NET verification workflow for this capability runs through `src/tests/OrgChart.IntegrationTests/OrgChart.IntegrationTests.csproj`.
+- Commands And Verification: Use `dotnet test src/tests/OrgChart.IntegrationTests/OrgChart.IntegrationTests.csproj --no-restore` for targeted verification.
+- Code And Docs Map: Setup and reference notes for this capability start in `README.md`.
+- Code And Docs Map: Relevant source code for this capability lives under `src/`.
+- Code And Docs Map: Dotnet solution entrypoint for this capability is `OrgChart.sln`.
+- Code And Docs Map: Relevant dotnet project file for this capability is `src/OrgChart.API/OrgChart.API.csproj`.
+- Code And Docs Map: Relevant dotnet project file for this capability is `src/OrgChart.Core/OrgChart.Core.csproj`.
+- Code And Docs Map: Relevant dotnet project file for this capability is `src/OrgChart.Infrastructure/OrgChart.Infrastructure.csproj`.
+- Code And Docs Map: Relevant source code for this capability lives under `src/OrgChart.Core/Services/`.
+- Code And Docs Map: Automated tests for this capability live under `src/tests/`.
+Evidence files:
+- /tmp/tmp7rdhkza5/OrgChart/README.md
+- /tmp/tmp7rdhkza5/OrgChart/src
+- /tmp/tmp7rdhkza5/OrgChart/OrgChart.sln
+- /tmp/tmp7rdhkza5/OrgChart/src/tests/OrgChart.IntegrationTests/OrgChart.IntegrationTests.csproj
+- /tmp/tmp7rdhkza5/OrgChart/src/OrgChart.API/OrgChart.API.csproj
+- /tmp/tmp7rdhkza5/OrgChart/src/OrgChart.Core/OrgChart.Core.csproj
+- /tmp/tmp7rdhkza5/OrgChart/src/OrgChart.Infrastructure/OrgChart.Infrastructure.csproj
+- /tmp/tmp7rdhkza5/OrgChart/src/OrgChart.Core/Services
+- /tmp/tmp7rdhkza5/OrgChart/src/tests
+Rematerialized Codex capabilities: 1
+- project-knowledge-steward -> govkb-orgchart-project-knowledge-steward: /tmp/tmp7rdhkza5/codex-home/skills/govkb-orgchart-project-knowledge-steward
+Validation command: govkb validate /tmp/tmp7rdhkza5/OrgChart
+Validation result: ok
+Scaffolded /tmp/tmp1yh3xg9u/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+Capability: project-knowledge-steward
+Memory: /tmp/tmp1yh3xg9u/DemoProject/.governed/capabilities/project-knowledge-steward/references/long-term-memory.md
+Added bullets:
+- Stable Workflows: Primary .NET verification workflow for this capability runs through `backend-dotnet/StoryApp.StoryBook.Tests.Unit/StoryApp.StoryBook.Tests.Unit.csproj`.
+- Stable Workflows: Local stack wiring for this capability is defined in `backend-dotnet/docker-compose.yml`.
+- Stable Workflows: Local stack wiring for this capability is defined in `docker-compose.yml`.
+- Commands And Verification: Use `dotnet test backend-dotnet/StoryApp.StoryBook.Tests.Unit/StoryApp.StoryBook.Tests.Unit.csproj --no-restore` for targeted verification.
+- Code And Docs Map: Setup and reference notes for this capability start in `README.md`.
+- Code And Docs Map: Project docs for this capability live under `docs/`.
+- Code And Docs Map: Dotnet solution entrypoint for this capability is `backend-dotnet/StoryApp.sln`.
+- Code And Docs Map: Automated tests for this capability live under `e2e/`.
+Evidence files:
+- /tmp/tmp1yh3xg9u/DemoProject/README.md
+- /tmp/tmp1yh3xg9u/DemoProject/docs
+- /tmp/tmp1yh3xg9u/DemoProject/backend-dotnet/StoryApp.StoryBook.Tests.Unit/StoryApp.StoryBook.Tests.Unit.csproj
+- /tmp/tmp1yh3xg9u/DemoProject/backend-dotnet/StoryApp.sln
+- /tmp/tmp1yh3xg9u/DemoProject/backend-dotnet/docker-compose.yml
+- /tmp/tmp1yh3xg9u/DemoProject/docker-compose.yml
+- /tmp/tmp1yh3xg9u/DemoProject/e2e
+Rematerialized Codex capabilities: 1
+- project-knowledge-steward -> govkb-demo-project-project-knowledge-steward: /tmp/tmp1yh3xg9u/codex-home/skills/govkb-demo-project-project-knowledge-steward
+Validation command: govkb validate /tmp/tmp1yh3xg9u/DemoProject
+Validation result: ok
+Scaffolded /tmp/tmpxk4y105u/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate auth-e2e-workflow: status=collecting occurrences=1 suggested=auth-e2e-workflow path=/tmp/tmpxk4y105u/ExampleApp/.governed/candidates/auth-e2e-workflow
+updated candidate auth-e2e-workflow: status=ready-for-review occurrences=2 suggested=auth-e2e-workflow path=/tmp/tmpxk4y105u/ExampleApp/.governed/candidates/auth-e2e-workflow
+Scaffolded /tmp/tmpzl8hh8k0/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmpzl8hh8k0/ExampleApp/.governed/candidates/backend-workflow
+updated candidate backend-workflow: status=ready-for-review occurrences=2 suggested=backend-local-stack-workflow path=/tmp/tmpzl8hh8k0/ExampleApp/.governed/candidates/backend-workflow
+Using suggested capability id: backend-local-stack-workflow
+warning: backend-local-stack-workflow: bootstrap found no new durable KB facts
+Created capability from candidate: /tmp/tmpzl8hh8k0/ExampleApp/.governed/capabilities/backend-local-stack-workflow
+Auto-create: created 1 capability(s)
+- backend-workflow -> backend-local-stack-workflow
+Auto-create: applied Codex materialization to /tmp/tmpzl8hh8k0/codex-home
+Auto-create: install state /tmp/tmpzl8hh8k0/codex-home/memories/govkb/install-state/example-app--codex.json
+Scaffolded /tmp/tmptoecfhl6/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmptoecfhl6/ExampleApp/.governed/candidates/backend-workflow
+updated candidate backend-workflow: status=ready-for-review occurrences=2 suggested=backend-local-stack-workflow path=/tmp/tmptoecfhl6/ExampleApp/.governed/candidates/backend-workflow
+Auto-create: disabled in .governed/project.toml
+Scaffolded /tmp/tmpdrbxigtf/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate auth-e2e-workflow: status=collecting occurrences=1 suggested=auth-e2e-workflow path=/tmp/tmpdrbxigtf/ExampleApp/.governed/candidates/auth-e2e-workflow
+updated candidate auth-e2e-workflow: status=ready-for-review occurrences=2 suggested=auth-e2e-workflow path=/tmp/tmpdrbxigtf/ExampleApp/.governed/candidates/auth-e2e-workflow
+created candidate backend-stack-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmpdrbxigtf/ExampleApp/.governed/candidates/backend-stack-workflow
+Scaffolded /tmp/tmpt35s8yg_/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+created candidate workflow-audit: status=collecting occurrences=1 suggested=workflow-audit path=/tmp/tmpt35s8yg_/DemoProject/.governed/candidates/workflow-audit
+updated candidate workflow-audit: status=ready-for-review occurrences=2 suggested=workflow-audit path=/tmp/tmpt35s8yg_/DemoProject/.governed/candidates/workflow-audit
+Scaffolded /tmp/tmpwg11k2_l/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-local-stack-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmpwg11k2_l/ExampleApp/.governed/candidates/backend-local-stack-workflow
+updated candidate backend-local-stack-workflow: status=ready-for-review occurrences=2 suggested=backend-local-stack-workflow path=/tmp/tmpwg11k2_l/ExampleApp/.governed/candidates/backend-local-stack-workflow
+Using suggested capability id: backend-local-stack-workflow
+warning: backend-local-stack-workflow: bootstrap found no new durable KB facts
+Created capability from candidate: /tmp/tmpwg11k2_l/ExampleApp/.governed/capabilities/backend-local-stack-workflow
+Scaffolded /tmp/tmpcgqpwjpf/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmpcgqpwjpf/ExampleApp/.governed/candidates/backend-workflowok
+test_stage_candidate_filters_prose_like_missing_repo_paths (tests.test_candidates.CandidateCommandTests.test_stage_candidate_filters_prose_like_missing_repo_paths) ... ok
+test_stage_candidate_from_sessions_and_activate_capability (tests.test_candidates.CandidateCommandTests.test_stage_candidate_from_sessions_and_activate_capability) ... ok
+test_stage_candidate_ignores_investigation_prefix_for_auth_workflow (tests.test_candidates.CandidateCommandTests.test_stage_candidate_ignores_investigation_prefix_for_auth_workflow) ... ok
+test_stage_candidate_ignores_materialized_steward_default_from_semantic_seed (tests.test_candidates.CandidateCommandTests.test_stage_candidate_ignores_materialized_steward_default_from_semantic_seed) ... ok
+test_stage_candidate_merges_cross_stack_semantic_split (tests.test_candidates.CandidateCommandTests.test_stage_candidate_merges_cross_stack_semantic_split) ... ok
+test_stage_candidate_merges_similar_topics (tests.test_candidates.CandidateCommandTests.test_stage_candidate_merges_similar_topics) ... ok
+test_stage_candidate_prefers_structured_topic_name (tests.test_candidates.CandidateCommandTests.test_stage_candidate_prefers_structured_topic_name) ... ok
+test_stage_candidate_preserves_backend_stack_intent_without_semantic_seed (tests.test_candidates.CandidateCommandTests.test_stage_candidate_preserves_backend_stack_intent_without_semantic_seed) ... ok
+test_stage_candidate_rekeys_single_session_candidate_to_better_id (tests.test_candidates.CandidateCommandTests.test_stage_candidate_rekeys_single_session_candidate_to_better_id) ... ok
+test_stage_candidate_uses_repo_artifacts_for_mixed_language_non_coding_fallback (tests.test_candidates.CandidateCommandTests.test_stage_candidate_uses_repo_artifacts_for_mixed_language_non_coding_fallback) ... ok
+test_stage_candidate_uses_semantic_seed_for_id_scope_and_repo_facts (tests.test_candidates.CandidateCommandTests.test_stage_candidate_uses_semantic_seed_for_id_scope_and_repo_facts) ... ok
+test_review_memory_passes_low_cost_classifier_options (tests.test_review_memory_command.ReviewMemoryCommandTests.test_review_memory_passes_low_cost_classifier_options) ... ok
+
+----------------------------------------------------------------------
+Ran 33 tests in 0.267s
+
+OK
+
+updated candidate backend-workflow: status=ready-for-review occurrences=2 suggested=backend-local-stack-workflow path=/tmp/tmpcgqpwjpf/ExampleApp/.governed/candidates/backend-workflow
+Using suggested capability id: backend-local-stack-workflow
+warning: backend-local-stack-workflow: bootstrap found no new durable KB facts
+Created capability from candidate: /tmp/tmpcgqpwjpf/ExampleApp/.governed/capabilities/backend-local-stack-workflow
+Scaffolded /tmp/tmpjbqyxy4s/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate frontend-e2e-workflow: status=collecting occurrences=1 suggested=frontend-workflow path=/tmp/tmpjbqyxy4s/ExampleApp/.governed/candidates/frontend-e2e-workflow
+Scaffolded /tmp/tmp2tn4uzo3/DemoProject/.governed
+Project id: demo-project
+Next step: govkb validate
+created candidate workflow-audit: status=collecting occurrences=1 suggested=workflow-audit path=/tmp/tmp2tn4uzo3/DemoProject/.governed/candidates/workflow-audit
+updated candidate workflow-audit: status=ready-for-review occurrences=2 suggested=workflow-audit path=/tmp/tmp2tn4uzo3/DemoProject/.governed/candidates/workflow-audit
+warning: workflow-audit: bootstrap found no new durable KB facts
+Created capability from candidate: /tmp/tmp2tn4uzo3/DemoProject/.governed/capabilities/workflow-audit
+Scaffolded /tmp/tmp66q_ugza/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate auth-e2e-workflow: status=collecting occurrences=1 suggested=auth-e2e-workflow path=/tmp/tmp66q_ugza/ExampleApp/.governed/candidates/auth-e2e-workflow
+updated candidate auth-e2e-workflow: status=ready-for-review occurrences=2 suggested=auth-e2e-workflow path=/tmp/tmp66q_ugza/ExampleApp/.governed/candidates/auth-e2e-workflow
+Scaffolded /tmp/tmp7eb_nyj2/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-frontend-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmp7eb_nyj2/ExampleApp/.governed/candidates/backend-frontend-workflow
+Scaffolded /tmp/tmpc_0tbdev/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate readme-package-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmpc_0tbdev/ExampleApp/.governed/candidates/readme-package-workflow
+updated candidate backend-frontend-workflow: status=ready-for-review occurrences=2 suggested=backend-local-stack-workflow path=/tmp/tmpc_0tbdev/ExampleApp/.governed/candidates/backend-frontend-workflow
+Scaffolded /tmp/tmp_kmog_74/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmp_kmog_74/ExampleApp/.governed/candidates/backend-workflow
+updated candidate backend-workflow: status=ready-for-review occurrences=2 suggested=backend-local-stack-workflow path=/tmp/tmp_kmog_74/ExampleApp/.governed/candidates/backend-workflow
+Scaffolded /tmp/tmpdhrwqa3z/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate backend-workflow: status=collecting occurrences=1 suggested=backend-workflow path=/tmp/tmpdhrwqa3z/ExampleApp/.governed/candidates/backend-workflow
+Scaffolded /tmp/tmpi8bwszg6/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate frontend-package-workflow: status=collecting occurrences=1 suggested=backend-local-stack-workflow path=/tmp/tmpi8bwszg6/ExampleApp/.governed/candidates/frontend-package-workflow
+Scaffolded /tmp/tmp88t12nag/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+updated candidate backend-workflow: status=collecting occurrences=1 suggested=backend-workflow path=/tmp/tmp88t12nag/ExampleApp/.governed/candidates/backend-workflow
+Scaffolded /tmp/tmpbo0s0xju/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate release-signoff-workflow: status=collecting occurrences=1 suggested=release-signoff-workflow path=/tmp/tmpbo0s0xju/ExampleApp/.governed/candidates/release-signoff-workflow
+updated candidate release-signoff-workflow: status=ready-for-review occurrences=2 suggested=release-signoff-workflow path=/tmp/tmpbo0s0xju/ExampleApp/.governed/candidates/release-signoff-workflow
+Scaffolded /tmp/tmpnmigwva3/ExampleApp/.governed
+Project id: example-app
+Next step: govkb validate
+created candidate release-validation-workflow: status=collecting occurrences=1 suggested=release-validation-workflow path=/tmp/tmpnmigwva3/ExampleApp/.governed/candidates/release-validation-workflow

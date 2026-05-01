@@ -1,0 +1,13 @@
+.governed/**
+codex-home/**
+**/codex-home/**
+**/memories/govkb/**
+**/reports/**
+src/test/**
+out/test/**
+*.vsix
+node_modules/**
+npm-debug.log
+.vscode/**
+.DS_Store
+

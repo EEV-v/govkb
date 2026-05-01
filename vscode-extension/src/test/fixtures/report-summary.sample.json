@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "codexHome": "/tmp/govkb-poc/codex-home",
+  "projectId": "demo-project",
+  "reports": [
+    {
+      "path": "/tmp/govkb-poc/codex-home/memories/govkb/projects/demo-project/codex-memory-review/reports/2026-04-25T120000Z-report.md",
+      "createdAt": "2026-04-25T12:00:00Z",
+      "classifier": {
+        "model": "gpt-5.4-mini",
+        "reasoning": "low"
+      },
+      "sessions": {
+        "failed": 0,
+        "deferred": 1,
+        "learned": 0,
+        "stagedCandidates": 1
+      },
+      "containsRawTranscript": false
+    }
+  ]
+}
+

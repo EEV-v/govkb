@@ -5,6 +5,8 @@ Repo-native governed knowledge tooling for project AI collaboration.
 ## Documentation
 
 - Product and implementation docs live under [docs/governed-skill-knowledge-framework](docs/governed-skill-knowledge-framework).
+- Feature spec convergence cookbook prompts live under [docs/FEATURE_SPEC_COOKBOOK](docs/FEATURE_SPEC_COOKBOOK).
+- Feature delivery cookbook prompts live under [docs/COOKBOOK](docs/COOKBOOK).
 - The main starting points are:
   - [business.md](docs/governed-skill-knowledge-framework/business.md)
   - [implementation-plan.md](docs/governed-skill-knowledge-framework/implementation-plan.md)
@@ -25,6 +27,8 @@ This initial implementation covers:
 - `govkb review-memory --assistant codex` to run the project-scoped memory-review adapter
 - local install-state tracking for Codex materialization
 - governed learning classification, staging, auto-promotion, and audit reports
+- optional local VSIX proof under `vscode-extension/` for VS Code setup, apply,
+  status, candidates, and report views
 
 ## Local development
 
@@ -33,4 +37,8 @@ cd govkb
 python3 -m unittest discover -s tests -v
 python3 -m govkb.cli --help
 python3 -m govkb.cli apply codex --project-root /path/to/repo --codex-home /tmp/codex-home --preview
+cd vscode-extension
+npm install
+npm test
+npx @vscode/vsce package --no-dependencies
 ```

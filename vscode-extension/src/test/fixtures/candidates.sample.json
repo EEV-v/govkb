@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": "/tmp/govkb-poc/project",
+  "candidates": [
+    {
+      "id": "backend-workflow",
+      "status": "ready-for-review",
+      "occurrences": 2,
+      "suggestedCapabilityId": "backend-local-stack-workflow",
+      "activationState": "not-activated",
+      "path": "/tmp/govkb-poc/project/.governed/candidates/backend-workflow"
+    }
+  ]
+}
+

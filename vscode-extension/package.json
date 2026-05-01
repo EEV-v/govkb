@@ -1,0 +1,299 @@
+{
+  "name": "govkb",
+  "displayName": "GovKB",
+  "description": "Editor UI for governed knowledge package setup, apply, status, candidates, and report review.",
+  "version": "0.0.1",
+  "publisher": "govkb-local",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:govkb.oneClickSetup",
+    "onCommand:govkb.oneClickApply",
+    "onCommand:govkb.validateProject",
+    "onCommand:govkb.showStatus",
+    "onCommand:govkb.reviewMemoryDryRun",
+    "onCommand:govkb.reviewMemoryApply",
+    "onCommand:govkb.listCandidates",
+    "onCommand:govkb.refreshReports",
+    "onCommand:govkb.openLatestReport",
+    "onCommand:govkb.openReport",
+    "onCommand:govkb.openOutput",
+    "onView:govkb.status",
+    "onView:govkb.capabilities",
+    "onView:govkb.candidates",
+    "onView:govkb.reports"
+  ],
+  "main": "./out/extension.js",
+  "scripts": {
+    "compile": "tsc -p .",
+    "test": "npm run compile && node --test out/test/suite/*.test.js",
+    "package": "vsce package --no-dependencies"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "govkb.oneClickSetup",
+        "title": "GovKB: One-Click Setup Current Project",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "govkb.oneClickApply",
+        "title": "GovKB: One-Click Apply Current Project",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "govkb.validateProject",
+        "title": "GovKB: Validate Project",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "govkb.showStatus",
+        "title": "GovKB: Show Status",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "govkb.reviewMemoryDryRun",
+        "title": "GovKB: Review Memory Dry Run",
+        "icon": "$(search)"
+      },
+      {
+        "command": "govkb.reviewMemoryApply",
+        "title": "GovKB: Review Memory Apply",
+        "icon": "$(play)"
+      },
+      {
+        "command": "govkb.listCandidates",
+        "title": "GovKB: List Candidates",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "govkb.refreshReports",
+        "title": "GovKB: Refresh Reports",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "govkb.openLatestReport",
+        "title": "GovKB: Open Latest Report",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "govkb.openReport",
+        "title": "GovKB: Open Report",
+        "icon": "$(file-text)"
+      },
+      {
+        "command": "govkb.openOutput",
+        "title": "GovKB: Open Output",
+        "icon": "$(output)"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "govkb.oneClickSetup"
+        },
+        {
+          "command": "govkb.oneClickApply"
+        },
+        {
+          "command": "govkb.validateProject"
+        },
+        {
+          "command": "govkb.showStatus"
+        },
+        {
+          "command": "govkb.reviewMemoryDryRun"
+        },
+        {
+          "command": "govkb.reviewMemoryApply"
+        },
+        {
+          "command": "govkb.listCandidates"
+        },
+        {
+          "command": "govkb.refreshReports"
+        },
+        {
+          "command": "govkb.openLatestReport"
+        },
+        {
+          "command": "govkb.openOutput"
+        },
+        {
+          "command": "govkb.openReport",
+          "when": "false"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "govkb.oneClickSetup",
+          "when": "view == govkb.status",
+          "group": "navigation@1"
+        },
+        {
+          "command": "govkb.oneClickApply",
+          "when": "view == govkb.status",
+          "group": "navigation@2"
+        },
+        {
+          "command": "govkb.showStatus",
+          "when": "view == govkb.status",
+          "group": "navigation@3"
+        },
+        {
+          "command": "govkb.validateProject",
+          "when": "view == govkb.status",
+          "group": "navigation@4"
+        },
+        {
+          "command": "govkb.showStatus",
+          "when": "view == govkb.capabilities",
+          "group": "navigation@1"
+        },
+        {
+          "command": "govkb.oneClickApply",
+          "when": "view == govkb.capabilities",
+          "group": "navigation@2"
+        },
+        {
+          "command": "govkb.listCandidates",
+          "when": "view == govkb.candidates",
+          "group": "navigation@1"
+        },
+        {
+          "command": "govkb.reviewMemoryDryRun",
+          "when": "view == govkb.candidates",
+          "group": "navigation@2"
+        },
+        {
+          "command": "govkb.reviewMemoryApply",
+          "when": "view == govkb.candidates",
+          "group": "navigation@3"
+        },
+        {
+          "command": "govkb.refreshReports",
+          "when": "view == govkb.reports",
+          "group": "navigation@1"
+        },
+        {
+          "command": "govkb.openLatestReport",
+          "when": "view == govkb.reports",
+          "group": "navigation@2"
+        },
+        {
+          "command": "govkb.reviewMemoryDryRun",
+          "when": "view == govkb.reports",
+          "group": "navigation@3"
+        },
+        {
+          "command": "govkb.reviewMemoryApply",
+          "when": "view == govkb.reports",
+          "group": "navigation@4"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "GovKB",
+      "properties": {
+        "govkb.command": {
+          "type": "string",
+          "default": "govkb",
+          "description": "GovKB runtime command. Use govkb for a PATH launcher, an absolute executable path, or python-module to run Python module mode."
+        },
+        "govkb.pythonPath": {
+          "type": "string",
+          "default": "python3",
+          "description": "Python executable used only when GovKB: Command is python-module; it must be able to import govkb.cli."
+        },
+        "govkb.setupMode": {
+          "type": "string",
+          "default": "guidedInstall",
+          "enum": [
+            "auto",
+            "useExisting",
+            "guidedInstall"
+          ],
+          "description": "How local setup explains a missing runtime. guidedInstall shows setup guidance; useExisting assumes you manage the runtime command yourself."
+        },
+        "govkb.codexHome": {
+          "type": "string",
+          "default": "",
+          "description": "Optional CODEX_HOME override used by setup, apply, status, reports, and memory review."
+        },
+        "govkb.classifierModel": {
+          "type": "string",
+          "default": "",
+          "description": "Optional memory-review classifier model override. Leave empty to use the GovKB CLI default or GOVKB_CODEX_MODEL."
+        },
+        "govkb.classifierReasoning": {
+          "type": "string",
+          "default": "",
+          "enum": [
+            "",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "description": "Optional memory-review classifier reasoning override. Leave empty to use the GovKB CLI default or GOVKB_CODEX_REASONING."
+        },
+        "govkb.reviewTimeoutSeconds": {
+          "type": "number",
+          "default": 0,
+          "description": "Optional classifier timeout in seconds for GovKB memory review. Use 0 to let the GovKB CLI default apply."
+        },
+        "govkb.reviewMaxSessions": {
+          "type": "number",
+          "default": 1,
+          "description": "Maximum recent Codex sessions scanned by GovKB memory review; keep this low for local VSIX validation."
+        },
+        "govkb.defaultDryRun": {
+          "type": "boolean",
+          "default": true,
+          "description": "Default memory-review mode."
+        }
+      }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "govkb",
+          "title": "GovKB",
+          "icon": "resources/govkb.svg"
+        }
+      ]
+    },
+    "views": {
+      "govkb": [
+        {
+          "id": "govkb.status",
+          "name": "Status"
+        },
+        {
+          "id": "govkb.capabilities",
+          "name": "Capabilities"
+        },
+        {
+          "id": "govkb.candidates",
+          "name": "Candidates"
+        },
+        {
+          "id": "govkb.reports",
+          "name": "Reports"
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "typescript": "^5.9.0"
+  }
+}
