@@ -11,6 +11,7 @@ import tomllib
 from govkb.adapters.codex.materialize import apply_codex_materialization
 from govkb.core.automation import automation_policy_from_manifest
 from govkb.core.candidates import candidate_default_capability_id
+from govkb.core.candidates import candidate_is_review_approved
 from govkb.core.candidates import list_candidates
 from govkb.core.candidates import load_candidate
 from govkb.core.candidates import stage_candidate_from_session
@@ -168,6 +169,9 @@ def _auto_create_candidate_rows(project_root: Path, min_occurrences: int) -> tup
         if not _scope_is_complete(candidate_data):
             skipped.append(f"{candidate_id}: scope metadata incomplete")
             continue
+        if not candidate_is_review_approved(candidate_data):
+            skipped.append(f"{candidate_id}: review status not approved")
+            continue
         capability_id = candidate_default_capability_id(candidate_data, candidate_id)
         ready_rows.append((candidate_id, capability_id))
     return ready_rows, skipped
@@ -202,11 +206,12 @@ def _run_auto_create_ready(args) -> int:
                 capability_id=None,
                 project_root=project_root,
                 from_candidate=candidate_id,
+                require_strict_activation=True,
             )
         )
         if create_exit != 0:
-            print(f"error: auto-create failed for candidate {candidate_id}", file=sys.stderr)
-            return create_exit
+            skipped.append(f"{candidate_id}: strict activation gate failed for {capability_id}")
+            continue
         created_rows.append((candidate_id, capability_id))
         planned_capability_ids.add(capability_id)
 

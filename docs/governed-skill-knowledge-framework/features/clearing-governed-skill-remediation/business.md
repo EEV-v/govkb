@@ -28,6 +28,8 @@ Maintainers should be able to:
 
 This work should happen after `governed-skill-quality-gates` can flag the weak package shape.
 
+Engineering may plan this remediation before quality gates are implemented, but remediation writes must not happen until strict validation can produce actionable evidence for the Clearing package.
+
 ## Scope
 
 In scope:
@@ -56,6 +58,19 @@ The maintainer should choose one path after strict validation:
 | Rename or replace | Capability was activated under the wrong domain | Create a domain-specific capability and deactivate the weak one |
 | Deprecate | Existing materialized users need compatibility but routing should stop | Keep package for history but remove active use |
 | Demote to candidate | Evidence is not sufficient for active capability | Move back to reviewable candidate state |
+
+## First Remediation Policy
+
+The first engineering pass should use this safe default:
+
+1. Run strict validation and produce a remediation report.
+2. Disable or constrain Clearing candidate auto-create until strict gates are enforced.
+3. Do not mutate Clearing production code.
+4. Do not mutate Clearing governed package state until a maintainer approves the remediation option.
+5. If `local-stack-workflow` is confirmed to be weak or wrong-domain, prefer demotion or deprecation over in-place repair.
+6. Preserve useful project-knowledge-steward memory unless strict validation identifies a concrete safety issue.
+
+Long-term `.governed` ownership should be the Git repository that owns Clearing project governance. If the working directory under review is not itself a Git repository, engineering must stop at a remediation report and identify the owning repository before writing durable governed package changes.
 
 ## Acceptance Criteria
 

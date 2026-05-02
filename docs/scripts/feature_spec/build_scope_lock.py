@@ -38,13 +38,31 @@ def extract_scope_lines(section_body: Optional[str], limit: int = 10) -> List[st
     if not section_body:
         return []
     result: List[str] = []
+    has_in_scope_marker = any(line.strip().casefold() == "in scope:" for line in section_body.splitlines())
+    active = not has_in_scope_marker
     for raw_line in section_body.splitlines():
         stripped = raw_line.strip()
+        lowered = stripped.casefold()
+        if lowered in {"in scope:", "included scope:"}:
+            active = True
+            continue
+        if lowered in {"out of scope:", "non-goals:", "excluded scope:"}:
+            break
+        if not active:
+            continue
         if stripped.startswith(("- ", "* ")):
             result.append(stripped[2:].strip())
         elif re.match(r"^\d+\.\s+", stripped):
             result.append(re.split(r"^\d+\.\s+", stripped, maxsplit=1)[1].strip())
     return result[:limit]
+
+
+def first_section_body(business_text: str, *headings: str) -> Optional[str]:
+    for heading in headings:
+        body = extract_section_body(business_text, heading)
+        if body:
+            return body
+    return None
 
 
 def main() -> int:
@@ -86,7 +104,7 @@ def main() -> int:
         and row.get("Status") == "Deferred"
     ]
     ready = not blocking and not open_decisions and pending_feedback is None
-    scope_lines = extract_scope_lines(extract_section_body(business_text, "Scope"), limit=10)
+    scope_lines = extract_scope_lines(first_section_body(business_text, "Scope", "MVP Scope"), limit=10)
 
     lines = [
         f"# Scope Lock — {feature_title}",

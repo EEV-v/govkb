@@ -72,6 +72,12 @@ Conversion preview must show:
 
 Preview must write nothing.
 
+## Adapter Output Policy
+
+Conversion must always create canonical `instructions.md` as the governed, assistant-agnostic instruction surface.
+
+Conversion should write `adapters/codex/SKILL.md` only when the conversion plan identifies Codex-specific presentation or exact local-skill parity that cannot be represented cleanly in `instructions.md`. When no Codex-specific override is needed, normal GovKB Codex materialization can wrap `instructions.md` into a local `SKILL.md`.
+
 ## Source Content Classification
 
 Every source item must be classified as one of:
@@ -134,6 +140,10 @@ Conversion must never copy these into governed memory:
 - incident-specific identifiers unless already sanitized and approved
 
 Rejected content is reported with path, class, and reason, without copying the unsafe value.
+
+Preview mode reports rejected content only in console or JSON output because preview must write nothing.
+
+Write mode should also create a redacted conversion report under the new governed package, for example `docs/conversion-report.md`, containing rejected item metadata, classes, reasons, parity notes, and strict-validation outcome. The report must not include unsafe values, raw transcript text, credential paths, or secrets.
 
 ## Acceptance Criteria
 

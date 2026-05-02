@@ -57,6 +57,30 @@ def is_placeholder_row(row: Dict[str, str], text_key: str, expected_text: str) -
     return row.get("Source") == "Generated" and row.get(text_key, "").strip() == expected_text
 
 
+def normalize_question_row(row: Dict[str, str]) -> Dict[str, str]:
+    normalized = dict(row)
+    status = normalized.get("Status", "Blocking") or "Blocking"
+    normalized["Status"] = status
+    normalized.setdefault("Blocking", "Yes" if status == "Blocking" else "No")
+    normalized.setdefault("Owner", "TBD")
+    normalized.setdefault("Source", "Existing ledger")
+    normalized.setdefault("Notes", "Needs business answer or explicit deferral.")
+    return normalized
+
+
+def normalize_decision_row(row: Dict[str, str]) -> Dict[str, str]:
+    normalized = dict(row)
+    if "Decision / Candidate" not in normalized and "Decision" in normalized:
+        normalized["Decision / Candidate"] = normalized["Decision"]
+    normalized.setdefault("Status", "Open")
+    normalized.setdefault("Owner", "TBD")
+    normalized.setdefault("Source", "Existing ledger")
+    if "Notes" not in normalized and "Rationale" in normalized:
+        normalized["Notes"] = normalized["Rationale"]
+    normalized.setdefault("Notes", "Promote to Approved / Deferred / Rejected during review.")
+    return normalized
+
+
 def build_question_document(feature_title: str, rows: Sequence[Dict[str, str]]) -> str:
     lines = [
         f"# Open Questions — {feature_title}",
@@ -156,7 +180,7 @@ def collect_decisions(feature_dir: Path) -> List[Tuple[str, str]]:
 
 def merge_questions(existing_rows: Sequence[Dict[str, str]], discovered: Sequence[Tuple[str, str]]) -> List[Dict[str, str]]:
     retained_rows = [
-        dict(row)
+        normalize_question_row(row)
         for row in existing_rows
         if not is_placeholder_row(row, "Question", QUESTION_PLACEHOLDER["Question"])
     ]
@@ -211,7 +235,7 @@ def merge_questions(existing_rows: Sequence[Dict[str, str]], discovered: Sequenc
 
 def merge_decisions(existing_rows: Sequence[Dict[str, str]], discovered: Sequence[Tuple[str, str]]) -> List[Dict[str, str]]:
     retained_rows = [
-        dict(row)
+        normalize_decision_row(row)
         for row in existing_rows
         if not is_placeholder_row(row, "Decision / Candidate", DECISION_PLACEHOLDER["Decision / Candidate"])
     ]

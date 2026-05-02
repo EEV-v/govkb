@@ -61,6 +61,37 @@ def extract_bullets(section_body: Optional[str], limit: int = 8) -> List[str]:
     return bullets[:limit]
 
 
+def extract_in_scope_bullets(section_body: Optional[str], limit: int = 10) -> List[str]:
+    if not section_body:
+        return []
+    has_in_scope_marker = any(line.strip().casefold() == "in scope:" for line in section_body.splitlines())
+    active = not has_in_scope_marker
+    bullets: List[str] = []
+    for line in section_body.splitlines():
+        stripped = line.strip()
+        lowered = stripped.casefold()
+        if lowered in {"in scope:", "included scope:"}:
+            active = True
+            continue
+        if lowered in {"out of scope:", "non-goals:", "excluded scope:"}:
+            break
+        if not active:
+            continue
+        if stripped.startswith(("- ", "* ")):
+            bullets.append(stripped[2:].strip())
+        elif re.match(r"^\d+\.\s+", stripped):
+            bullets.append(re.split(r"^\d+\.\s+", stripped, maxsplit=1)[1].strip())
+    return bullets[:limit]
+
+
+def first_section_body(business_text: str, *headings: str) -> Optional[str]:
+    for heading in headings:
+        body = extract_section_body(business_text, heading)
+        if body:
+            return body
+    return None
+
+
 def build_source_artifacts(feature_dir: Path) -> List[str]:
     artifacts = ["business.md"]
     for name in [
@@ -89,10 +120,10 @@ def build_spec_brief(feature_dir: Path, feature_title: str) -> Dict[str, Any]:
 
     tracking = parse_tracking_block(business_text)
     summary = extract_summary_paragraph(business_text)
-    request = extract_section_body(business_text, "Request")
-    problem = extract_section_body(business_text, "Problem")
-    business_value = extract_bullets(extract_section_body(business_text, "Business Value"), limit=6)
-    scope_snapshot = extract_bullets(extract_section_body(business_text, "Scope"), limit=10)
+    request = first_section_body(business_text, "Request", "Summary", "Product Goal")
+    problem = first_section_body(business_text, "Problem", "Business Problem")
+    business_value = extract_bullets(first_section_body(business_text, "Business Value", "Product Goal"), limit=6)
+    scope_snapshot = extract_in_scope_bullets(first_section_body(business_text, "Scope", "MVP Scope"), limit=10)
     acceptance_snapshot = extract_bullets(extract_section_body(business_text, "Acceptance Criteria"), limit=8)
     open_questions = extract_question_lines(business_text)[:10]
     source_artifacts = build_source_artifacts(feature_dir)

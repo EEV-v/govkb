@@ -9,9 +9,12 @@ from pathlib import Path
 import tomllib
 
 from govkb.core.candidates import candidate_default_capability_id
+from govkb.core.candidates import candidate_is_review_approved
+from govkb.core.candidates import candidate_review_metadata
 from govkb.core.candidates import load_candidate
 from govkb.core.candidates import mark_candidate_activated
 from govkb.core.contracts import load_project_bundle
+from govkb.core.governed_skill import validate_governed_skill_package
 from govkb.core.ids import normalize_identifier
 from govkb.core.init_prompt import initialize_kb_prompt_text
 from govkb.core.kb_bootstrap import bootstrap_capability
@@ -186,6 +189,34 @@ def _candidate_contract_text(candidate_root: Path, capability_id: str, candidate
     return text
 
 
+def _contract_with_activation_lifecycle(text: str, candidate_data: dict[str, object], candidate_id: str) -> str:
+    if "[lifecycle]" in text:
+        return text
+    review = candidate_review_metadata(candidate_data)
+    scope = candidate_data.get("scope") if isinstance(candidate_data.get("scope"), dict) else {}
+    scope_summary = scope.get("summary") if isinstance(scope, dict) else None
+    justification = (
+        str(scope_summary).strip()
+        if isinstance(scope_summary, str) and scope_summary.strip()
+        else f"Candidate {candidate_id} was approved for governed capability activation."
+    )
+    return (
+        text.rstrip()
+        + "\n\n"
+        + "[lifecycle]\n"
+        + 'state = "active"\n'
+        + f"scope_justification = {json_string(justification)}\n\n"
+        + "[lifecycle.approval]\n"
+        + 'status = "approved"\n'
+        + f"reviewer = {json_string(review.get('reviewer', 'unknown-reviewer'))}\n"
+        + f"approved_at = {json_string(review.get('approved_at', 'unknown'))}\n"
+    )
+
+
+def json_string(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
 def run_create_capability(args) -> int:
     """Scaffold a governed capability under an existing `.governed` package."""
     requested_root = Path(args.project_root).resolve()
@@ -206,6 +237,12 @@ def run_create_capability(args) -> int:
         except Exception as exc:
             print(f"error: could not load candidate {candidate_id}: {exc}", file=sys.stderr)
             return 1
+        require_strict_activation = bool(getattr(args, "require_strict_activation", False))
+        if require_strict_activation:
+            if not candidate_is_review_approved(candidate_data):
+                print(f"error: candidate {candidate_id} is not approved for activation", file=sys.stderr)
+                return 1
+            contract_text = _contract_with_activation_lifecycle(contract_text, candidate_data, candidate_id)
         if not getattr(args, "capability_id", None):
             print(f"Using suggested capability id: {capability_id}")
         capability_root = governed_root / "capabilities" / capability_id
@@ -246,6 +283,18 @@ def run_create_capability(args) -> int:
                     print(f"Bootstrapped KB for {capability_id}: {len(bootstrap_result.added_facts)} bullet(s)")
                 else:
                     print(f"warning: {capability_id}: bootstrap found no new durable KB facts")
+            if require_strict_activation:
+                strict_result = validate_governed_skill_package(
+                    project_root,
+                    refreshed_bundle.capabilities[capability_id],
+                    activation_required=True,
+                )
+                for issue in strict_result.issues:
+                    stream = sys.stderr if issue.severity == "error" else sys.stdout
+                    print(f"strict {issue.severity}: {issue.rule_id}: {issue.location}: {issue.message}", file=stream)
+                if strict_result.errors:
+                    shutil.rmtree(capability_root, ignore_errors=True)
+                    return 1
             mark_candidate_activated(project_root, candidate_id, capability_id)
         except Exception as exc:
             shutil.rmtree(capability_root, ignore_errors=True)

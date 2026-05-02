@@ -220,7 +220,11 @@ def _repo_instructions_source(contract: CapabilityContract) -> Path | None:
 
 
 def _fallback_skill_source(contract: CapabilityContract) -> Path | None:
-    if contract.migration_source_adapter != "codex" or contract.migration_source_path is None:
+    if (
+        contract.migration_source_adapter != "codex"
+        or contract.migration_source_path is None
+        or contract.migration_status != "legacy-fallback"
+    ):
         return None
     candidate = contract.migration_source_path / "SKILL.md"
     return candidate if candidate.is_file() else None
@@ -228,7 +232,11 @@ def _fallback_skill_source(contract: CapabilityContract) -> Path | None:
 
 def _source_roots(contract: CapabilityContract) -> tuple[Path | None, Path | None]:
     repo_root = contract.capability_root
-    fallback_root = contract.migration_source_path if contract.migration_source_adapter == "codex" else None
+    fallback_root = (
+        contract.migration_source_path
+        if contract.migration_source_adapter == "codex" and contract.migration_status == "legacy-fallback"
+        else None
+    )
     return repo_root, fallback_root
 
 

@@ -1,0 +1,15 @@
+# Governed Skill Quality Gates - Requirements Catalog
+
+| ID | Requirement | Source | PoC Assertion | Scenario(s) | Status |
+|---|---|---|---|---|---|
+| REQ-GSK-QG-01 | Maintainer can run strict validation and see package-quality issues with exact locations. | `business.md` acceptance criteria 1 | Current CLI has no `validate --strict`; implementation must add strict command output with structured issue fields. | UC-1, UC-9 | Candidate |
+| REQ-GSK-QG-02 | A complete domain-specific governed skill package passes strict validation. | `business.md` acceptance criteria 2 | A temp project package with required files and approval metadata should produce zero strict errors. | UC-1 | Candidate |
+| REQ-GSK-QG-03 | A package with placeholder memory fails strict activation readiness. | `business.md` acceptance criteria 3 | Existing bootstrap health detects placeholders as warnings; strict validation must promote activation blockers to structured errors. | UC-3, UC-7 | Candidate |
+| REQ-GSK-QG-04 | A package with invalid repo-relative command paths fails strict activation readiness. | `business.md` acceptance criteria 4 | Base contract validation rejects configured parent-traversal memory paths; strict validation must also inspect package Markdown references. | UC-4 | Candidate |
+| REQ-GSK-QG-05 | A package containing local credential-file paths or token-like strings fails strict activation readiness. | `business.md` acceptance criteria 5, decision D8 | No centralized strict scanner exists in `src/govkb`; implementation must add deterministic forbidden-pattern checks. | UC-5 | Candidate |
+| REQ-GSK-QG-06 | A package with `tools/scripts/` but no `tools/README.md` is reported. | `business.md` acceptance criteria 6 | No current package tooling convention is validated; implementation must inspect package-owned tools without executing scripts. | UC-6 | Candidate |
+| REQ-GSK-QG-07 | Candidate auto-create cannot mark a strict-invalid package active. | `business.md` acceptance criteria 7, decision D3 | Current `tests.test_candidates.CandidateCommandTests.test_auto_create_ready_creates_capability_and_materializes_codex` proves ready candidates are activated after base validation only. | UC-7 | Candidate |
+| REQ-GSK-QG-08 | Generic capability ids require explicit justification and approval before activation. | `business.md` acceptance criteria 8 | Candidate naming heuristics exist, but activation readiness does not enforce generic-id justification or approval metadata. | UC-8 | Candidate |
+| REQ-GSK-QG-09 | Existing projects can still use normal validation and materialization during rollout. | `business.md` acceptance criteria 9, decision D2 | Current validation tests must continue passing without `--strict`. | UC-2 | Candidate |
+| REQ-GSK-QG-10 | Clearing's current weak `local-stack-workflow` shape can be flagged by strict validation without making Clearing cleanup part of this feature. | `business.md` acceptance criteria 10, decision D6 | Generic-id and placeholder/safety rules should be reusable on weak shapes, but no Clearing package changes are required. | UC-8 | Candidate |
+

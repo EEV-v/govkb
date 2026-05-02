@@ -65,6 +65,13 @@ GovKB must distinguish these states:
 
 Candidate auto-create may create draft packages or reviewable candidates, but it must not mark a package active unless the package is strict-valid and approved.
 
+Approval state must be visible in both places:
+
+- candidate metadata records review state before activation
+- capability metadata records lifecycle and approval state after activation
+
+This keeps candidate review auditable while letting active packages remain self-describing after the source candidate is archived, removed, or no longer loaded.
+
 ## Governed Skill Package Requirements
 
 A governed skill is represented by one capability package:
@@ -159,6 +166,13 @@ Forbidden in governed memory:
 - raw assistant transcripts
 - raw production evidence
 - account identifiers, customer identifiers, exact incident timestamps, or ticket-specific state unless explicitly approved for a sanitized artifact
+
+Strict validation must treat these credential-file path patterns as forbidden in governed memory and package docs unless explicitly marked as user-provided runtime input:
+
+- user-home credential roots: `~/.ssh/`, `~/.aws/`, `~/.azure/`, `~/.config/gcloud/`, `~/.kube/`
+- common credential files: `.netrc`, `.npmrc`, `.pypirc`, `.env`, `.env.local`
+- private key filenames or extensions: `id_rsa`, `id_ed25519`, `.pem`, `.key`, `.p12`
+- service account or token files whose path contains `credential`, `credentials`, `secret`, `secrets`, `token`, or `service-account`
 
 ## Tooling Requirements
 

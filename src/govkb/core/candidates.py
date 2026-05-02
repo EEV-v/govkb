@@ -1181,6 +1181,7 @@ def _candidate_toml(
     out_of_scope: tuple[str, ...],
     hints: tuple[str, ...],
     activated_capability_id: str | None = None,
+    review_metadata: dict[str, str] | None = None,
 ) -> str:
     activation = ""
     if activated_capability_id:
@@ -1189,6 +1190,21 @@ def _candidate_toml(
 capability_id = "{activated_capability_id}"
 activated_at = "{updated_at}"
 """
+    review = ""
+    if review_metadata:
+        review_status = review_metadata.get("status")
+        reviewer = review_metadata.get("reviewer")
+        approved_at = review_metadata.get("approved_at")
+        notes = review_metadata.get("notes")
+        if review_status:
+            review_lines = ["", "[review]", f"status = {json.dumps(review_status)}"]
+            if reviewer:
+                review_lines.append(f"reviewer = {json.dumps(reviewer)}")
+            if approved_at:
+                review_lines.append(f"approved_at = {json.dumps(approved_at)}")
+            if notes:
+                review_lines.append(f"notes = {json.dumps(notes)}")
+            review = "\n".join(review_lines) + "\n"
     return f"""candidate_version = 1
 id = "{candidate_id}"
 status = "{status}"
@@ -1211,6 +1227,7 @@ out_of_scope = {_toml_string_list(out_of_scope)}
 [source]
 assistant = "codex"
 sessions = {_toml_string_list(source_sessions)}
+{review}
 {activation}"""
 
 
@@ -1886,6 +1903,25 @@ def load_candidate(project_root: Path, candidate_id: str) -> tuple[Path, dict[st
     return candidate_root, tomllib.loads(candidate_path.read_text(encoding="utf-8"))
 
 
+def candidate_review_metadata(candidate_data: dict[str, Any]) -> dict[str, str]:
+    """Return normalized candidate review metadata."""
+    review = candidate_data.get("review")
+    if not isinstance(review, dict):
+        return {}
+    normalized: dict[str, str] = {}
+    for key in ("status", "reviewer", "approved_at", "notes"):
+        value = review.get(key)
+        if isinstance(value, str) and value.strip():
+            normalized[key] = value.strip()
+    return normalized
+
+
+def candidate_is_review_approved(candidate_data: dict[str, Any]) -> bool:
+    """Return whether a candidate has enough review metadata for activation."""
+    review = candidate_review_metadata(candidate_data)
+    return review.get("status") == "approved" and bool(review.get("reviewer")) and bool(review.get("approved_at"))
+
+
 def mark_candidate_activated(project_root: Path, candidate_id: str, capability_id: str) -> Path:
     """Mark a candidate as activated by a governed capability."""
     candidate_root, data = load_candidate(project_root, candidate_id)
@@ -1913,6 +1949,7 @@ def mark_candidate_activated(project_root: Path, candidate_id: str, capability_i
             out_of_scope=tuple(str(item) for item in scope.get("out_of_scope", ())) if isinstance(scope.get("out_of_scope"), list) else (),
             hints=tuple(str(item) for item in hints) if isinstance(hints, list) else (),
             activated_capability_id=capability_id,
+            review_metadata=candidate_review_metadata(data),
         ),
         encoding="utf-8",
     )

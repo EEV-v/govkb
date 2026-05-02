@@ -62,6 +62,25 @@ class KBHealthConfig:
 
 
 @dataclass(frozen=True)
+class ApprovalMetadata:
+    """Optional governed capability approval metadata."""
+
+    status: str | None = None
+    reviewer: str | None = None
+    approved_at: str | None = None
+    notes: str | None = None
+
+
+@dataclass(frozen=True)
+class LifecycleMetadata:
+    """Optional governed capability lifecycle metadata."""
+
+    state: str | None = None
+    scope_justification: str | None = None
+    approval: ApprovalMetadata = field(default_factory=ApprovalMetadata)
+
+
+@dataclass(frozen=True)
 class CapabilityContract:
     """Validated capability contract."""
 
@@ -82,6 +101,7 @@ class CapabilityContract:
     migration_status: str | None
     bootstrap: BootstrapConfig
     kb_health: KBHealthConfig
+    lifecycle: LifecycleMetadata
     source_path: Path
 
 
@@ -226,6 +246,32 @@ def _expect_relative_path_list(
     if not allow_empty and not validated:
         result.add_error(path, f"{label} must not be empty")
     return tuple(validated)
+
+
+def _optional_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped or None
+
+
+def _lifecycle_metadata(data: dict[str, Any]) -> LifecycleMetadata:
+    lifecycle = data.get("lifecycle")
+    if not isinstance(lifecycle, dict):
+        return LifecycleMetadata()
+    approval = lifecycle.get("approval")
+    if not isinstance(approval, dict):
+        approval = {}
+    return LifecycleMetadata(
+        state=_optional_string(lifecycle.get("state")),
+        scope_justification=_optional_string(lifecycle.get("scope_justification")),
+        approval=ApprovalMetadata(
+            status=_optional_string(approval.get("status")),
+            reviewer=_optional_string(approval.get("reviewer")),
+            approved_at=_optional_string(approval.get("approved_at")),
+            notes=_optional_string(approval.get("notes")),
+        ),
+    )
 
 
 def _load_project_manifest(path: Path, result: ValidationResult) -> dict[str, Any] | None:
@@ -461,6 +507,7 @@ def _load_capability_contract(path: Path, result: ValidationResult) -> Capabilit
             requires_repo_map=requires_repo_map,
             required_sections=required_sections,
         ),
+        lifecycle=_lifecycle_metadata(data),
         source_path=path,
     )
 

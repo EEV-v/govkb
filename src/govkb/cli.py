@@ -7,6 +7,7 @@ from pathlib import Path
 
 from govkb.commands.apply import run_codex_apply
 from govkb.commands.candidates import run_candidates
+from govkb.commands.convert import run_convert
 from govkb.commands.create_capability import run_create_capability
 from govkb.commands.install import run_install
 from govkb.commands.init import run_init
@@ -42,6 +43,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     validate_parser = subparsers.add_parser("validate", help="Validate a project .governed package.")
     validate_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to validate.")
+    validate_parser.add_argument("--strict", action="store_true", help="Run strict governed skill package quality checks.")
+    validate_parser.add_argument("--json", action="store_true", help="Emit machine-readable validation output.")
     validate_parser.set_defaults(handler=run_validate)
 
     init_kb_parser = subparsers.add_parser("init-kb", help="Bootstrap governed capability knowledge base files.")
@@ -124,6 +127,18 @@ def build_parser() -> argparse.ArgumentParser:
     candidates_auto_parser.add_argument("--assistant", default="codex", choices=("codex",), help="Assistant to materialize after auto-create.")
     candidates_auto_parser.add_argument("--codex-home", type=Path, help="Codex home override for local materialization.")
     candidates_auto_parser.set_defaults(handler=run_candidates)
+
+    convert_parser = subparsers.add_parser("convert", help="Convert local assistant artifacts into governed packages.")
+    convert_subparsers = convert_parser.add_subparsers(dest="convert_action", required=True)
+
+    convert_skill_parser = convert_subparsers.add_parser("skill", help="Preview or write one local Codex skill conversion.")
+    convert_skill_parser.add_argument("skill", help="Codex skill name under --codex-home/skills or an explicit skill directory path.")
+    convert_skill_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    convert_skill_parser.add_argument("--codex-home", type=Path, help="Codex home used to resolve skill names.")
+    convert_skill_parser.add_argument("--capability-id", help="Explicit target governed capability id.")
+    convert_skill_parser.add_argument("--write", action="store_true", help="Write the converted governed package. Omit for preview.")
+    convert_skill_parser.add_argument("--json", action="store_true", help="Emit machine-readable conversion output.")
+    convert_skill_parser.set_defaults(handler=run_convert)
 
     promote_parser = subparsers.add_parser("promote", help="Promote safe local governed assistant memory changes into the repo package.")
     promote_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to promote from.")

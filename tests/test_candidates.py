@@ -70,6 +70,47 @@ def _set_auto_create_policy(project_root: Path, enabled: bool, min_occurrences: 
     project_manifest.write_text(automation_block, encoding="utf-8")
 
 
+def _approve_candidate(project_root: Path, candidate_id: str) -> None:
+    candidate_path = project_root / ".governed" / "candidates" / candidate_id / "candidate.toml"
+    candidate_path.write_text(
+        candidate_path.read_text(encoding="utf-8").rstrip()
+        + """
+
+[review]
+status = "approved"
+reviewer = "test-reviewer"
+approved_at = "2026-05-01T00:00:00Z"
+notes = "Approved for strict activation in test fixture."
+""",
+        encoding="utf-8",
+    )
+
+
+def _write_strict_candidate_facts(project_root: Path, candidate_id: str) -> None:
+    facts_path = project_root / ".governed" / "candidates" / candidate_id / "candidate-facts.toml"
+    rows = [
+        ("working-agreement", "Working Agreement", "Keep this capability focused on durable backend stack verification."),
+        ("stable-workflow", "Stable Workflows", "Review stack prerequisites, run verification, and preserve reusable evidence."),
+        ("commands", "Commands And Verification", "Run python3 -m unittest tests.test_candidates -v from the repository root."),
+        ("repo-map", "Code And Docs Map", "Use README.md as the durable backend stack entry point."),
+        ("authority", "Authority Rules", "Prefer governed capability memory over broad project notes for backend stack activation."),
+    ]
+    lines = ["facts_version = 1", ""]
+    for grouping_key, section, fact in rows:
+        lines.extend(
+            [
+                "[[facts]]",
+                f'grouping_key = "{grouping_key}"',
+                f'section = "{section}"',
+                f'fact = "{fact}"',
+                "confidence = 0.95",
+                f'provenance_sessions = ["{candidate_id}-one", "{candidate_id}-two"]',
+                "",
+            ]
+        )
+    facts_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 class CandidateCommandTests(unittest.TestCase):
     """Candidate staging and activation behavior."""
 
@@ -1155,7 +1196,7 @@ sessions = ["backend-workflow"]
             _, candidate = load_candidate(project_root, "backend-workflow")
             self.assertEqual(candidate["status"], "ready-for-review")
 
-    def test_auto_create_ready_creates_capability_and_materializes_codex(self) -> None:
+    def test_auto_create_ready_skips_unapproved_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "ExampleApp"
             codex_home = Path(temp_dir) / "codex-home"
@@ -1189,6 +1230,59 @@ sessions = ["backend-workflow"]
                 ),
                 0,
             )
+
+            exit_code = run_candidates(
+                argparse.Namespace(
+                    candidate_action="auto-create-ready",
+                    project_root=project_root,
+                    assistant="codex",
+                    codex_home=codex_home,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertFalse((project_root / ".governed" / "capabilities" / "backend-local-stack-workflow").exists())
+            self.assertFalse((codex_home / "skills" / "govkb-example-app-backend-local-stack-workflow").exists())
+            _, candidate = load_candidate(project_root, "backend-workflow")
+            self.assertEqual(candidate["status"], "ready-for-review")
+
+    def test_auto_create_ready_creates_capability_and_materializes_codex(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "ExampleApp"
+            codex_home = Path(temp_dir) / "codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / "README.md").write_text("# ExampleApp\n", encoding="utf-8")
+            run_init(argparse.Namespace(dest=project_root, project_id="example-app", project_name="ExampleApp"))
+            _set_auto_create_policy(project_root, enabled=True, min_occurrences=2)
+
+            first_session = Path(temp_dir) / "backend-workflow-one.jsonl"
+            second_session = Path(temp_dir) / "backend-workflow-two.jsonl"
+            _write_session(
+                first_session,
+                "backend-workflow-one",
+                project_root,
+                "Capture the reusable backend development workflow and local stack commands.",
+            )
+            _write_session(
+                second_session,
+                "backend-workflow-two",
+                project_root,
+                "Document the durable backend workflow and same local stack commands.",
+            )
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(candidate_action="stage", project_root=project_root, assistant="codex", session_file=first_session)
+                ),
+                0,
+            )
+            self.assertEqual(
+                run_candidates(
+                    argparse.Namespace(candidate_action="stage", project_root=project_root, assistant="codex", session_file=second_session)
+                ),
+                0,
+            )
+            _approve_candidate(project_root, "backend-workflow")
+            _write_strict_candidate_facts(project_root, "backend-workflow")
 
             exit_code = run_candidates(
                 argparse.Namespace(
