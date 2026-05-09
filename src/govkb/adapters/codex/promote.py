@@ -10,11 +10,16 @@ import subprocess
 from typing import Any
 
 from govkb.core.contracts import ProjectBundle
+from govkb.core.contracts import load_project_bundle
 from govkb.core.install_state import default_codex_home
 from govkb.core.install_state import install_state_path
 from govkb.core.install_state import iso_utc_now
 from govkb.core.install_state import load_install_state
 from govkb.core.memory_scaffold import is_scaffold_bullet
+from govkb.core.promotion_lifecycle import initial_promotion_metadata
+from govkb.core.promotion_lifecycle import promotion_project_key
+from govkb.core.promotion_lifecycle import promotion_metadata_path
+from govkb.core.promotion_lifecycle import write_promotion_metadata
 
 
 @dataclass(frozen=True)
@@ -41,6 +46,17 @@ class GitHygiene:
 
 
 @dataclass(frozen=True)
+class WorktreeIsolation:
+    """Git worktree used for automated promotion handoff."""
+
+    attempted: bool
+    branch: str | None
+    worktree_root: Path | None
+    project_root: Path | None
+    message: str
+
+
+@dataclass(frozen=True)
 class PromotionResult:
     """Summary of one promotion run."""
 
@@ -53,6 +69,7 @@ class PromotionResult:
     git: GitHygiene
     report_path: Path | None
     digest_path: Path | None
+    isolation: WorktreeIsolation | None = None
 
     @property
     def promoted_count(self) -> int:
@@ -157,6 +174,41 @@ def _git_status(root: Path, project_root: Path) -> tuple[str, ...]:
     return tuple(line for line in proc.stdout.splitlines() if line.strip())
 
 
+def _git_head(root: Path) -> str | None:
+    proc = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    head = proc.stdout.strip()
+    return head or None
+
+
+def _safe_branch_component(value: str) -> str:
+    return promotion_project_key(value)
+
+
+def _worktree_run_id() -> str:
+    return iso_utc_now().replace(":", "").replace("-", "").replace(".", "")
+
+
+def _add_promotion_worktree(git_root: Path, worktree_root: Path, branch: str) -> tuple[bool, str]:
+    worktree_root.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.run(
+        ["git", "-C", str(git_root), "worktree", "add", "-b", branch, str(worktree_root), "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode == 0:
+        return True, "created isolated git worktree for automated promotion review"
+    detail = (proc.stderr or proc.stdout).strip()
+    return False, f"skipped: git worktree add failed: {detail}"
+
+
 def _git_hygiene_before(project_root: Path) -> GitHygiene:
     root = _git_root(project_root)
     if root is None:
@@ -217,6 +269,12 @@ def _write_report(project_root: Path, result: PromotionResult, run_id: str) -> P
     ]
     if result.git.root is not None:
         lines.append(f"- Git root: {result.git.root}")
+    if result.isolation is not None:
+        lines.append(f"- Isolation: {result.isolation.message}")
+        if result.isolation.branch is not None:
+            lines.append(f"- Isolation branch: {result.isolation.branch}")
+        if result.isolation.worktree_root is not None:
+            lines.append(f"- Isolation worktree: {result.isolation.worktree_root}")
     lines.extend(["", "## Git Status Before"])
     if result.git.status_before:
         lines.extend(f"- `{line}`" for line in result.git.status_before)
@@ -260,6 +318,12 @@ def _write_digest(project_root: Path, result: PromotionResult, run_id: str, repo
     ]
     if result.git.root is not None:
         lines.append(f"- Git root: `{result.git.root}`")
+    if result.isolation is not None:
+        lines.append(f"- Isolation: {result.isolation.message}")
+        if result.isolation.branch is not None:
+            lines.append(f"- Isolation branch: `{result.isolation.branch}`")
+        if result.isolation.worktree_root is not None:
+            lines.append(f"- Isolation worktree: `{result.isolation.worktree_root}`")
     lines.extend(["", "## Changed Files"])
     changed = result.git.status_after or result.git.status_before
     if changed:
@@ -282,6 +346,178 @@ def _write_digest(project_root: Path, result: PromotionResult, run_id: str, repo
         lines.append(f"- `{item.capability_id}`: {item.reason}")
     digest_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     return digest_path
+
+
+def _with_isolation(result: PromotionResult, isolation: WorktreeIsolation) -> PromotionResult:
+    return PromotionResult(
+        result.project_id,
+        result.codex_home,
+        result.state_path,
+        result.preview,
+        result.auto,
+        result.items,
+        result.git,
+        result.report_path,
+        result.digest_path,
+        isolation,
+    )
+
+
+def promote_codex_memory_in_isolated_worktree(
+    project_root: Path,
+    codex_home_override: Path | None,
+) -> PromotionResult:
+    """Promote safe local memory changes into an isolated git worktree branch."""
+    active_root = project_root.resolve()
+    codex_home = (codex_home_override or default_codex_home()).resolve()
+    active_bundle, active_validation = load_project_bundle(active_root)
+    if active_validation.errors:
+        preview = promote_codex_memory(
+            project_root=active_root,
+            bundle=active_bundle,
+            codex_home_override=codex_home,
+            preview=True,
+            auto=True,
+            write_report=False,
+        )
+        return _with_isolation(
+            preview,
+            WorktreeIsolation(
+                attempted=True,
+                branch=None,
+                worktree_root=None,
+                project_root=None,
+                message="skipped: active governed package has validation errors",
+            ),
+        )
+
+    preview = promote_codex_memory(
+        project_root=active_root,
+        bundle=active_bundle,
+        codex_home_override=codex_home,
+        preview=True,
+        auto=True,
+        write_report=False,
+    )
+    if not preview.items:
+        return _with_isolation(
+            preview,
+            WorktreeIsolation(
+                attempted=True,
+                branch=None,
+                worktree_root=None,
+                project_root=None,
+                message="skipped: no safe local governed memory changes to isolate",
+            ),
+        )
+
+    git_root = _git_root(active_root)
+    if git_root is None:
+        return _with_isolation(
+            preview,
+            WorktreeIsolation(
+                attempted=True,
+                branch=None,
+                worktree_root=None,
+                project_root=None,
+                message="skipped: project root is not inside a git worktree",
+            ),
+        )
+    if _git_head(git_root) is None:
+        return _with_isolation(
+            preview,
+            WorktreeIsolation(
+                attempted=True,
+                branch=None,
+                worktree_root=None,
+                project_root=None,
+                message="skipped: git worktree has no committed HEAD",
+            ),
+        )
+
+    try:
+        relative_project_root = active_root.relative_to(git_root)
+    except ValueError:
+        return _with_isolation(
+            preview,
+            WorktreeIsolation(
+                attempted=True,
+                branch=None,
+                worktree_root=None,
+                project_root=None,
+                message="skipped: project root is outside the git root",
+            ),
+        )
+
+    project_id = active_bundle.project_id or "unknown-project"
+    safe_project_id = _safe_branch_component(project_id)
+    run_id = _worktree_run_id()
+    branch = f"codex/govkb-auto-promote/{safe_project_id}/{run_id}"
+    worktree_root = codex_home / "memories" / "govkb" / "worktrees" / safe_project_id / run_id
+    ok, message = _add_promotion_worktree(git_root, worktree_root, branch)
+    isolation = WorktreeIsolation(
+        attempted=True,
+        branch=branch if ok else None,
+        worktree_root=worktree_root if ok else None,
+        project_root=(worktree_root / relative_project_root) if ok else None,
+        message=message,
+    )
+    if not ok or isolation.project_root is None:
+        return _with_isolation(preview, isolation)
+
+    isolated_bundle, isolated_validation = load_project_bundle(isolation.project_root)
+    if isolated_validation.errors:
+        return _with_isolation(
+            preview,
+            WorktreeIsolation(
+                attempted=True,
+                branch=branch,
+                worktree_root=worktree_root,
+                project_root=isolation.project_root,
+                message="skipped: isolated governed package has validation errors",
+            ),
+        )
+
+    isolated_result = promote_codex_memory(
+        project_root=isolation.project_root,
+        bundle=isolated_bundle,
+        codex_home_override=codex_home,
+        preview=False,
+        auto=True,
+        write_report=False,
+    )
+    final = _with_isolation(isolated_result, isolation)
+    if final.items:
+        report_path = _write_report(isolation.project_root, final, run_id)
+        digest_path = _write_digest(isolation.project_root, final, run_id, report_path)
+        final = PromotionResult(
+            final.project_id,
+            final.codex_home,
+            final.state_path,
+            final.preview,
+            final.auto,
+            final.items,
+            _git_hygiene_after(isolation.project_root, final.git),
+            report_path,
+            digest_path,
+            final.isolation,
+        )
+        _write_report(isolation.project_root, final, run_id)
+        _write_digest(isolation.project_root, final, run_id, report_path)
+        write_promotion_metadata(
+            promotion_metadata_path(codex_home, project_id, run_id),
+            initial_promotion_metadata(
+                project_id=project_id,
+                project_root=active_root,
+                codex_home=codex_home,
+                run_id=run_id,
+                branch=branch,
+                worktree_root=worktree_root,
+                digest_path=digest_path,
+                report_path=report_path,
+            ),
+        )
+    return final
 
 
 def promote_codex_memory(
@@ -359,7 +595,12 @@ def promote_codex_memory(
         ok, reason, additions = _validate_append_only(repo_text, local_text, target.sections)
         if ok and not preview:
             repo_path.write_text(local_text.rstrip() + "\n", encoding="utf-8")
-        items.append(PromotionItem(capability_id, repo_path, local_path, ok, reason, additions))
+        promoted = ok
+        item_reason = reason
+        if ok and preview and auto:
+            promoted = False
+            item_reason = "staged: auto promotion skipped active worktree mutation"
+        items.append(PromotionItem(capability_id, repo_path, local_path, promoted, item_reason, additions))
 
     interim = PromotionResult(
         project_id,
@@ -409,6 +650,15 @@ def result_to_json(result: PromotionResult) -> str:
             "status_before": list(result.git.status_before),
             "status_after": list(result.git.status_after),
             "message": result.git.message,
+        },
+        "isolation": None
+        if result.isolation is None
+        else {
+            "attempted": result.isolation.attempted,
+            "branch": result.isolation.branch,
+            "worktree_root": str(result.isolation.worktree_root) if result.isolation.worktree_root else None,
+            "project_root": str(result.isolation.project_root) if result.isolation.project_root else None,
+            "message": result.isolation.message,
         },
         "items": [
             {

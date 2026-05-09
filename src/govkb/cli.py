@@ -13,6 +13,8 @@ from govkb.commands.install import run_install
 from govkb.commands.init import run_init
 from govkb.commands.init_kb import run_init_kb
 from govkb.commands.promote import run_promote
+from govkb.commands.promotions import run_promotions
+from govkb.commands.remediate import run_remediate
 from govkb.commands.review_memory import run_review_memory
 from govkb.commands.status import run_status
 from govkb.commands.validate import run_validate
@@ -46,6 +48,33 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser.add_argument("--strict", action="store_true", help="Run strict governed skill package quality checks.")
     validate_parser.add_argument("--json", action="store_true", help="Emit machine-readable validation output.")
     validate_parser.set_defaults(handler=run_validate)
+
+    remediate_parser = subparsers.add_parser("remediate", help="Build governed package remediation reports.")
+    remediate_subparsers = remediate_parser.add_subparsers(dest="remediation_action", required=True)
+
+    remediate_project_parser = remediate_subparsers.add_parser(
+        "project",
+        help="Inspect one governed project and produce a remediation report.",
+    )
+    remediate_project_parser.add_argument(
+        "project_root",
+        nargs="?",
+        type=Path,
+        default=Path.cwd(),
+        help="Project root to inspect.",
+    )
+    remediate_project_parser.add_argument(
+        "--write-report",
+        action="store_true",
+        help="Write a markdown report under .governed/reports/remediation when Git ownership is verified.",
+    )
+    remediate_project_parser.add_argument(
+        "--report-root",
+        type=Path,
+        help="Override the remediation report directory.",
+    )
+    remediate_project_parser.add_argument("--json", action="store_true", help="Emit machine-readable remediation output.")
+    remediate_project_parser.set_defaults(handler=run_remediate)
 
     init_kb_parser = subparsers.add_parser("init-kb", help="Bootstrap governed capability knowledge base files.")
     init_kb_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to bootstrap.")
@@ -95,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-auto-promote",
         dest="auto_promote",
         action="store_false",
-        help="Do not promote safe governed memory changes back into the repo after apply.",
+        help="Do not run the automated non-mutating promotion check after local memory apply.",
     )
     review_parser.set_defaults(auto_promote=True)
     review_parser.set_defaults(handler=run_review_memory)
@@ -146,8 +175,48 @@ def build_parser() -> argparse.ArgumentParser:
     promote_parser.add_argument("--assistant", default="codex", choices=("codex",), help="Assistant to promote from.")
     promote_parser.add_argument("--codex-home", type=Path, help="Codex home override for local state inspection.")
     promote_parser.add_argument("--preview", action="store_true", help="Show safe promotions without editing repo files.")
-    promote_parser.add_argument("--auto", action="store_true", help="Mark this promotion as an automated scheduler promotion.")
+    promote_parser.add_argument("--auto", action="store_true", help="Run automated promotion in an isolated git worktree when possible.")
     promote_parser.set_defaults(handler=run_promote)
+
+    promotions_parser = subparsers.add_parser("promotions", help="Inspect isolated automated promotion worktrees and lifecycle state.")
+    promotions_subparsers = promotions_parser.add_subparsers(dest="promotion_action", required=True)
+
+    promotions_list_parser = promotions_subparsers.add_parser("list", help="List isolated promotion review worktrees.")
+    promotions_list_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    promotions_list_parser.add_argument("--codex-home", type=Path, help="Codex home override for promotion worktree inspection.")
+    promotions_list_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
+    promotions_list_parser.set_defaults(handler=run_promotions)
+
+    promotions_show_parser = promotions_subparsers.add_parser("show", help="Show one isolated promotion digest and git status.")
+    promotions_show_parser.add_argument("promotion", help="Promotion run id, branch name, or worktree path.")
+    promotions_show_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    promotions_show_parser.add_argument("--codex-home", type=Path, help="Codex home override for promotion worktree inspection.")
+    promotions_show_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
+    promotions_show_parser.set_defaults(handler=run_promotions)
+
+    promotions_review_parser = promotions_subparsers.add_parser(
+        "mark-reviewed",
+        help="Record a GovKB lifecycle decision for one isolated promotion without changing Git history.",
+    )
+    promotions_review_parser.add_argument("promotion", help="Promotion run id, branch name, or worktree path.")
+    promotions_review_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    promotions_review_parser.add_argument("--codex-home", type=Path, help="Codex home override for promotion worktree inspection.")
+    promotions_review_parser.add_argument("--decision", required=True, choices=("accepted", "rejected"), help="Lifecycle review decision to record.")
+    promotions_review_parser.add_argument("--reason", required=True, help="Human-readable review reason.")
+    promotions_review_parser.add_argument("--reviewer", help="Reviewer name or id.")
+    promotions_review_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
+    promotions_review_parser.set_defaults(handler=run_promotions)
+
+    promotions_archive_parser = promotions_subparsers.add_parser(
+        "archive",
+        help="Archive one promotion in GovKB lifecycle metadata without changing Git history.",
+    )
+    promotions_archive_parser.add_argument("promotion", help="Promotion run id, branch name, or worktree path.")
+    promotions_archive_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    promotions_archive_parser.add_argument("--codex-home", type=Path, help="Codex home override for promotion worktree inspection.")
+    promotions_archive_parser.add_argument("--reason", help="Human-readable archive reason.")
+    promotions_archive_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
+    promotions_archive_parser.set_defaults(handler=run_promotions)
 
     create_parser = subparsers.add_parser("create", help="Scaffold governed objects.")
     create_subparsers = create_parser.add_subparsers(dest="create_target", required=True)

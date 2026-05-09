@@ -29,7 +29,7 @@ def resolve_codex_home() -> Path:
     if configured:
         return Path(configured).expanduser()
 
-    script_path = Path(__file__).resolve()
+    script_path = Path(__file__).expanduser()
     installed_home = script_path.parent.parent
     if script_path.parent.name == "bin" and (
         (installed_home / "skills").exists() or (installed_home / "memories").exists()
@@ -642,6 +642,12 @@ def governed_project_root(path: Path) -> Path | None:
     return None
 
 
+def same_project_root(left: Path | None, right: Path | None) -> bool:
+    if left is None or right is None:
+        return False
+    return left.expanduser().resolve() == right.expanduser().resolve()
+
+
 def load_governed_install_states() -> list[dict[str, Any]]:
     states: list[dict[str, Any]] = []
     if not INSTALL_STATE_DIR.exists():
@@ -833,7 +839,7 @@ def targets_for_session(session: SessionRef, targets: dict[str, MemoryTarget]) -
         if target.project_root is None:
             scoped[skill] = target
             continue
-        if project_root is not None and target.project_root == project_root:
+        if same_project_root(target.project_root, project_root):
             scoped[skill] = target
     return scoped
 
@@ -1627,7 +1633,7 @@ def run_auto_promote(project_roots: set[Path]) -> int:
             "--auto",
         ]
         env = govkb_subprocess_env(project_root)
-        log(f"Auto-promoting governed memory changes for {project_root}")
+        log(f"Running isolated governed memory promotion for {project_root}")
         proc = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, check=False, timeout=120)
         if proc.stdout.strip():
             for line in proc.stdout.strip().splitlines():
@@ -1745,7 +1751,8 @@ def process(args: argparse.Namespace) -> int:
     sessions, discovery = load_sessions(args, state)
     scoped_project_root = getattr(args, "resolved_project_root", None)
     if scoped_project_root is not None:
-        sessions = [session for session in sessions if session_project_root(session) == scoped_project_root]
+        scoped_project_root = scoped_project_root.expanduser().resolve()
+        sessions = [session for session in sessions if same_project_root(session_project_root(session), scoped_project_root)]
         discovery = DiscoveryStats(
             indexed_rows=discovery.indexed_rows,
             indexed_missing_files=discovery.indexed_missing_files,
@@ -2038,7 +2045,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-auto-promote",
         dest="auto_promote",
         action="store_false",
-        help="Do not promote safe governed memory changes back into the repo after apply.",
+        help="Do not run the automated non-mutating promotion check after local memory apply.",
     )
     parser.set_defaults(auto_promote=True)
     return parser

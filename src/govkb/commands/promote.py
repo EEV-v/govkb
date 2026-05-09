@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 
+from govkb.adapters.codex.promote import promote_codex_memory_in_isolated_worktree
 from govkb.adapters.codex.promote import promote_codex_memory
 from govkb.core.contracts import load_project_bundle
 
@@ -15,21 +16,30 @@ def run_promote(args) -> int:
         print(f"error: unsupported assistant for promote: {assistant}", file=sys.stderr)
         return 2
 
-    bundle, validation = load_project_bundle(args.project_root)
-    for warning in validation.warnings:
-        print(f"warning: {warning.location}: {warning.message}", file=sys.stderr)
-    if validation.errors:
-        for error in validation.errors:
-            print(f"error: {error.location}: {error.message}", file=sys.stderr)
-        return 1
+    auto = getattr(args, "auto", False)
+    requested_preview = getattr(args, "preview", False)
+    if auto and not requested_preview:
+        result = promote_codex_memory_in_isolated_worktree(
+            project_root=args.project_root.resolve(),
+            codex_home_override=getattr(args, "codex_home", None),
+        )
+    else:
+        bundle, validation = load_project_bundle(args.project_root)
+        for warning in validation.warnings:
+            print(f"warning: {warning.location}: {warning.message}", file=sys.stderr)
+        if validation.errors:
+            for error in validation.errors:
+                print(f"error: {error.location}: {error.message}", file=sys.stderr)
+            return 1
 
-    result = promote_codex_memory(
-        project_root=args.project_root.resolve(),
-        bundle=bundle,
-        codex_home_override=getattr(args, "codex_home", None),
-        preview=getattr(args, "preview", False),
-        auto=getattr(args, "auto", False),
-    )
+        result = promote_codex_memory(
+            project_root=args.project_root.resolve(),
+            bundle=bundle,
+            codex_home_override=getattr(args, "codex_home", None),
+            preview=requested_preview,
+            auto=auto,
+            write_report=not auto,
+        )
 
     print(f"Project: {result.project_id}")
     print("Assistant: codex")
@@ -40,6 +50,15 @@ def run_promote(args) -> int:
     print(f"Promoted: {result.promoted_count}")
     print(f"Rejected: {result.rejected_count}")
     print(f"Git: {result.git.message}")
+    if auto:
+        if result.isolation is not None:
+            print(f"Auto isolation: {result.isolation.message}")
+            if result.isolation.branch is not None:
+                print(f"Auto branch: {result.isolation.branch}")
+            if result.isolation.worktree_root is not None:
+                print(f"Auto worktree: {result.isolation.worktree_root}")
+        else:
+            print("Auto trigger: active repo mutation skipped; run without --auto after review to promote.")
     if result.git.root is not None:
         print(f"Git root: {result.git.root}")
     if result.git.status_after:

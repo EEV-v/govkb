@@ -10,6 +10,7 @@ from typing import Any
 
 from govkb.core.contracts import ValidationResult
 from govkb.core.contracts import load_project_bundle
+from govkb.core.project import GOVERNED_DIRNAME
 from govkb.core.project import resolve_project_root
 
 
@@ -145,8 +146,12 @@ def resolve_session_project_root(session_path: Path) -> Path | None:
                     continue
                 cwd = payload.get("cwd")
                 if isinstance(cwd, str) and cwd.strip():
-                    resolved = resolve_project_root(Path(cwd).expanduser())
-                    if (resolved / ".governed").is_dir():
+                    candidate = Path(cwd).expanduser()
+                    for current in (candidate, *candidate.parents):
+                        if (current / GOVERNED_DIRNAME).is_dir():
+                            return current
+                    resolved = resolve_project_root(candidate)
+                    if (resolved / GOVERNED_DIRNAME).is_dir():
                         return resolved
     except FileNotFoundError:
         return None

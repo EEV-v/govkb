@@ -81,8 +81,11 @@ class InstallCommandTests(unittest.TestCase):
             old_home = Path(temp_dir) / "old-codex-home"
             new_home = Path(temp_dir) / "new-codex-home"
             project_root.mkdir(parents=True, exist_ok=True)
+            resolved_project_root = project_root.resolve()
+            resolved_old_home = old_home.resolve()
+            resolved_new_home = new_home.resolve()
 
-            existing_cron = _cron_line(project_root, old_home, "15 8 * * *") + "\n"
+            existing_cron = _cron_line(resolved_project_root, resolved_old_home, "15 8 * * *") + "\n"
             captured_crontab: dict[str, str] = {}
 
             def fake_run(cmd, **kwargs):
@@ -91,7 +94,7 @@ class InstallCommandTests(unittest.TestCase):
                 if cmd == ["crontab", "-"]:
                     captured_crontab["input"] = kwargs["input"]
                     return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
-                if cmd[:3] == ["git", "-C", str(project_root)] and cmd[3:] == ["rev-parse", "HEAD"]:
+                if cmd[:3] == ["git", "-C", str(resolved_project_root)] and cmd[3:] == ["rev-parse", "HEAD"]:
                     return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": ""})()
                 raise AssertionError(f"unexpected command: {cmd}")
 
@@ -113,9 +116,9 @@ class InstallCommandTests(unittest.TestCase):
                     )
 
             self.assertEqual(exit_code, 0)
-            self.assertIn(f"CODEX_HOME={new_home}", captured_crontab["input"])
-            self.assertIn(str(new_home / "bin" / "codex-memory-review"), captured_crontab["input"])
-            self.assertNotIn(str(old_home / "bin" / "codex-memory-review"), captured_crontab["input"])
+            self.assertIn(f"CODEX_HOME={resolved_new_home}", captured_crontab["input"])
+            self.assertIn(str(resolved_new_home / "bin" / "codex-memory-review"), captured_crontab["input"])
+            self.assertNotIn(str(resolved_old_home / "bin" / "codex-memory-review"), captured_crontab["input"])
             self.assertIn("Cron: updated project-scoped memory-review job", output.getvalue())
 
 

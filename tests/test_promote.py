@@ -60,7 +60,7 @@ class PromoteCommandTests(unittest.TestCase):
                     assistant="codex",
                     codex_home=codex_home,
                     preview=False,
-                    auto=True,
+                    auto=False,
                 )
             )
 
@@ -86,7 +86,7 @@ class PromoteCommandTests(unittest.TestCase):
                     assistant="codex",
                     codex_home=codex_home,
                     preview=False,
-                    auto=True,
+                    auto=False,
                 )
             )
 
@@ -110,7 +110,7 @@ class PromoteCommandTests(unittest.TestCase):
                     assistant="codex",
                     codex_home=codex_home,
                     preview=True,
-                    auto=True,
+                    auto=False,
                 )
             )
 
@@ -136,7 +136,7 @@ class PromoteCommandTests(unittest.TestCase):
                     assistant="codex",
                     codex_home=codex_home,
                     preview=False,
-                    auto=True,
+                    auto=False,
                 )
             )
 
@@ -169,7 +169,7 @@ class PromoteCommandTests(unittest.TestCase):
                     assistant="codex",
                     codex_home=codex_home,
                     preview=False,
-                    auto=True,
+                    auto=False,
                 )
             )
 
@@ -184,6 +184,78 @@ class PromoteCommandTests(unittest.TestCase):
             self.assertIn("git .governed", digest)
             self.assertIn("long-term-memory.md", digest)
             self.assertIn("latest-promotion-digest.md", digest)
+
+    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
+    def test_auto_promote_uses_isolated_worktree_without_mutating_active_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, repo_memory, local_memory = self._scaffold_project(temp_dir)
+            subprocess.run(["git", "init"], cwd=project_root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "govkb@example.local"], cwd=project_root, check=True)
+            subprocess.run(["git", "config", "user.name", "GovKB Test"], cwd=project_root, check=True)
+            subprocess.run(["git", "add", ".governed"], cwd=project_root, check=True)
+            subprocess.run(["git", "commit", "-m", "initial governed package"], cwd=project_root, check=True, capture_output=True)
+            original_repo = repo_memory.read_text(encoding="utf-8")
+            local_memory.write_text(
+                local_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- Keep automated learning out of the active checkout until maintainer review.\n",
+                encoding="utf-8",
+            )
+
+            exit_code = run_promote(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    assistant="codex",
+                    codex_home=codex_home,
+                    preview=False,
+                    auto=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(repo_memory.read_text(encoding="utf-8"), original_repo)
+            proc = subprocess.run(
+                ["git", "status", "--short", "--", ".governed"],
+                cwd=project_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(proc.stdout.strip(), "")
+            worktree_roots = sorted((codex_home / "memories" / "govkb" / "worktrees" / "demo-project").glob("*"))
+            self.assertEqual(len(worktree_roots), 1)
+            isolated_root = worktree_roots[0]
+            isolated_memory = (
+                isolated_root
+                / ".governed"
+                / "capabilities"
+                / "workflow-review"
+                / "references"
+                / "long-term-memory.md"
+            )
+            self.assertIn(
+                "Keep automated learning out of the active checkout until maintainer review.",
+                isolated_memory.read_text(encoding="utf-8"),
+            )
+            branch_proc = subprocess.run(
+                ["git", "branch", "--show-current"],
+                cwd=isolated_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertTrue(branch_proc.stdout.strip().startswith("codex/govkb-auto-promote/demo-project/"))
+            isolated_status = subprocess.run(
+                ["git", "status", "--short", "--", ".governed"],
+                cwd=isolated_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertIn("long-term-memory.md", isolated_status.stdout)
+            self.assertTrue(
+                (isolated_root / ".governed" / "reports" / "promotions" / "latest-promotion-digest.md").is_file()
+            )
 
 
 if __name__ == "__main__":
