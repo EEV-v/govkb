@@ -23,9 +23,11 @@ export function defaultSettings(): GovkbSettings {
     codexHome: undefined,
     classifierModel: undefined,
     classifierReasoning: undefined,
-    reviewTimeoutSeconds: undefined,
+    reviewTimeoutSeconds: 180,
     reviewMaxSessions: 1,
-    defaultDryRun: true
+    defaultDryRun: true,
+    autoRefreshOnStartup: true,
+    monitorIntervalSeconds: undefined
   };
 }
 
@@ -34,8 +36,9 @@ export function resolveSettings(config: ConfigurationReader): GovkbSettings {
   const codexHome = config.get("codexHome", "");
   const classifierModel = config.get("classifierModel", "");
   const classifierReasoning = config.get("classifierReasoning", "");
-  const timeout = config.get("reviewTimeoutSeconds", 0);
+  const timeout = config.get("reviewTimeoutSeconds", defaults.reviewTimeoutSeconds ?? 0);
   const maxSessions = config.get("reviewMaxSessions", defaults.reviewMaxSessions);
+  const monitorInterval = config.get("monitorIntervalSeconds", 0);
   return {
     command: config.get("command", defaults.command).trim() || defaults.command,
     pythonPath: config.get("pythonPath", defaults.pythonPath).trim() || defaults.pythonPath,
@@ -45,6 +48,8 @@ export function resolveSettings(config: ConfigurationReader): GovkbSettings {
     classifierReasoning: asOptionalReasoning(classifierReasoning),
     reviewTimeoutSeconds: Number.isFinite(timeout) && timeout > 0 ? Math.floor(timeout) : undefined,
     reviewMaxSessions: Number.isFinite(maxSessions) && maxSessions > 0 ? Math.floor(maxSessions) : defaults.reviewMaxSessions,
-    defaultDryRun: config.get("defaultDryRun", defaults.defaultDryRun)
+    defaultDryRun: config.get("defaultDryRun", defaults.defaultDryRun),
+    autoRefreshOnStartup: config.get("autoRefreshOnStartup", defaults.autoRefreshOnStartup),
+    monitorIntervalSeconds: Number.isFinite(monitorInterval) && monitorInterval >= 30 ? Math.floor(monitorInterval) : undefined
   };
 }

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": "/repo",
+  "codexHome": "/tmp/codex-home",
+  "projectId": "demo-project",
+  "promotionsRoot": "/tmp/codex-home/memories/govkb/worktrees/demo-project",
+  "promotions": [
+    {
+      "runId": "20260509T184838198055Z",
+      "branch": "codex/govkb-auto-promote/demo-project/20260509T184838198055Z",
+      "head": "abc123",
+      "worktreeRoot": "/tmp/codex-home/memories/govkb/worktrees/demo-project/20260509T184838198055Z",
+      "digestPath": "/tmp/codex-home/memories/govkb/worktrees/demo-project/20260509T184838198055Z/.governed/reports/promotions/latest-promotion-digest.md",
+      "reportPaths": [
+        "/tmp/codex-home/memories/govkb/worktrees/demo-project/20260509T184838198055Z/.governed/reports/promotions/20260509T184838198055Z-promote-report.md"
+      ],
+      "status": [
+        " M .governed/capabilities/workflow-review/references/long-term-memory.md",
+        "?? .governed/reports/"
+      ],
+      "state": "ready-for-review",
+      "metadataPath": "/tmp/codex-home/memories/govkb/promotions/demo-project/20260509T184838198055Z.json",
+      "review": null,
+      "archive": null
+    }
+  ]
+}

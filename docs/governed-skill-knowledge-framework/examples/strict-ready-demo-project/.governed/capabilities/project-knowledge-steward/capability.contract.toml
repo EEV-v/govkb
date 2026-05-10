@@ -1,0 +1,68 @@
+contract_version = 1
+
+[capability]
+id = "project-knowledge-steward"
+name = "Project Knowledge Steward"
+governed = true
+description = "Strict-ready customer demo knowledge keeper for repository workflows, verification commands, conventions, and capability candidate signals."
+
+[routing]
+aliases = ["$project-knowledge-steward", "project knowledge steward", "project-knowledge-steward"]
+hints = [
+  "project workflow",
+  "repo convention",
+  "verification command",
+  "project knowledge",
+  "customer demo",
+  "candidate skill",
+]
+negative_hints = [
+  "codex-memory-review",
+  "cron schedule",
+  "raw transcript",
+  "secret value",
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Project Working Agreement",
+  "Stable Workflows",
+  "Commands And Verification",
+  "Repo Conventions",
+  "Code And Docs Map",
+  "Authority Rules",
+  "Candidate Skill Signals",
+]
+
+[bootstrap]
+profile = "steward"
+repo_roots = ["."]
+authority_paths = ["README.md"]
+seed_paths = ["README.md", "docs", "src", "tests"]
+
+[kb_health]
+requires_verification_commands = true
+requires_repo_map = true
+required_sections = [
+  "Project Working Agreement",
+  "Stable Workflows",
+  "Commands And Verification",
+  "Code And Docs Map",
+  "Candidate Skill Signals",
+]
+
+[lifecycle]
+state = "active"
+scope_justification = "Customer demo steward capability is intentionally broad for the first-run project knowledge flow."
+
+[lifecycle.approval]
+status = "approved"
+reviewer = "customer-demo-maintainer"
+approved_at = "2026-05-09T00:00:00Z"
+

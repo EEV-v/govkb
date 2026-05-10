@@ -1,18 +1,31 @@
 import * as vscode from "vscode";
 import { CommandRunState } from "./commandState";
-import { runCliCommand, statusJsonCommand, validateCommand } from "./govkbCli";
-import { listCandidates, runMemoryReviewApply, runMemoryReviewDryRun, runOneClickApply, runOneClickSetup } from "./flows";
+import { promotionShowCommand, runCliCommand, statusJsonCommand, validateCommand } from "./govkbCli";
+import {
+  archivePromotion,
+  listCandidates,
+  listPromotions,
+  markPromotionReviewed,
+  runAutoPromote,
+  runMemoryReviewApply,
+  runMemoryReviewDryRun,
+  runOneClickApply,
+  runOneClickSetup
+} from "./flows";
 import { parseStatusPayload } from "./jsonParsers";
 import { resolveProjectRoot } from "./projectSelection";
 import { codexHomeForReports, discoverReportSummaries, reportRootForProject } from "./reports";
+import { withResolvedGovkbRuntime } from "./runtimeDiscovery";
 import { resolveSettings } from "./settings";
 import { ensureWorkspaceTrusted } from "./trust";
-import { Blocker, CliCommand, CliRunner, ReportSummary, StatusPayload } from "./types";
+import { Blocker, CliCommand, CliRunner, PromotionSummary, ReportSummary, StatusPayload } from "./types";
 import { SimpleTreeProvider } from "./views/simpleTree";
 import { capabilityRows } from "./views/capabilitiesView";
 import { candidateRows } from "./views/candidatesView";
+import { promotionRows } from "./views/promotionsView";
 import { reportRows } from "./views/reportsView";
 import { statusRows } from "./views/statusView";
+import { LAST_PROJECT_ROOT_KEY, storedProjectRootForWorkspace } from "./workspaceProject";
 
 const OPEN_OUTPUT_ACTION = "Open the GovKB output channel";
 const RUN_SETUP_ACTION = "Run GovKB: One-Click Setup Current Project";
@@ -20,9 +33,15 @@ const RUN_STATUS_ACTION = "Run GovKB: Show Status";
 const RUN_DRY_RUN_ACTION = "Run GovKB: Review Memory Dry Run";
 const RUN_APPLY_REVIEW_ACTION = "Run GovKB: Review Memory Apply";
 const REFRESH_REPORTS_ACTION = "GovKB: Refresh Reports";
+const RUN_AUTO_PROMOTE_ACTION = "GovKB: Auto Promote Learned Updates";
+const REFRESH_PROMOTIONS_ACTION = "GovKB: Refresh Promotions";
 
 function settingsFromVscode() {
-  return resolveSettings(vscode.workspace.getConfiguration("govkb"));
+  const settings = withResolvedGovkbRuntime(resolveSettings(vscode.workspace.getConfiguration("govkb")));
+  return {
+    ...settings,
+    codexHome: codexHomeForReports(settings)
+  };
 }
 
 async function handleAction(output: vscode.OutputChannel, selected: string | undefined): Promise<void> {
@@ -47,6 +66,14 @@ async function handleAction(output: vscode.OutputChannel, selected: string | und
   }
   if (selected === RUN_APPLY_REVIEW_ACTION) {
     await vscode.commands.executeCommand("govkb.reviewMemoryApply");
+    return;
+  }
+  if (selected === RUN_AUTO_PROMOTE_ACTION) {
+    await vscode.commands.executeCommand("govkb.promoteAuto");
+    return;
+  }
+  if (selected === REFRESH_PROMOTIONS_ACTION) {
+    await vscode.commands.executeCommand("govkb.refreshPromotions");
     return;
   }
   if (selected === REFRESH_REPORTS_ACTION) {
@@ -166,10 +193,18 @@ export function activate(context: vscode.ExtensionContext): void {
   const statusProvider = new SimpleTreeProvider();
   const capabilitiesProvider = new SimpleTreeProvider();
   const candidatesProvider = new SimpleTreeProvider();
+  const promotionsProvider = new SimpleTreeProvider();
   const reportsProvider = new SimpleTreeProvider();
   let latestStatus: StatusPayload | undefined;
+  let latestPromotions: PromotionSummary[] = [];
+  let latestPromotionsProjectRoot: string | undefined;
   let latestReports: ReportSummary[] = [];
   let latestReportRoot: string | undefined;
+  let monitor: NodeJS.Timeout | undefined;
+
+  function rememberProjectRoot(projectRoot: string): void {
+    void context.workspaceState.update(LAST_PROJECT_ROOT_KEY, projectRoot);
+  }
 
   function refreshViews(status?: StatusPayload): void {
     latestStatus = status ?? latestStatus;
@@ -182,6 +217,7 @@ export function activate(context: vscode.ExtensionContext): void {
     if (result.stdout.trim()) {
       try {
         const status = parseStatusPayload(result.stdout);
+        rememberProjectRoot(status.projectRoot);
         refreshViews(status);
         if (result.exitCode !== 0 && warnOnNonZero) {
           await showBlocker(output, {
@@ -217,6 +253,165 @@ export function activate(context: vscode.ExtensionContext): void {
     } catch (error) {
       await showBlocker(output, {
         title: "GovKB candidate refresh failed",
+        action: OPEN_OUTPUT_ACTION,
+        detail: errorDetail(error)
+      });
+    }
+  }
+
+  async function refreshPromotionsForProject(projectRoot?: string): Promise<void> {
+    const root = projectRoot ?? latestPromotionsProjectRoot ?? latestStatus?.projectRoot ?? (await selectProjectRoot(output));
+    if (!root) {
+      return;
+    }
+    try {
+      const payload = await listPromotions(settingsFromVscode(), root, runner);
+      rememberProjectRoot(root);
+      latestPromotions = payload.promotions;
+      latestPromotionsProjectRoot = root;
+      promotionsProvider.setRows(promotionRows(latestPromotions));
+    } catch (error) {
+      await showBlocker(output, {
+        title: "GovKB promotions refresh failed",
+        action: OPEN_OUTPUT_ACTION,
+        detail: errorDetail(error)
+      });
+    }
+  }
+
+  async function selectPromotion(
+    promotion?: PromotionSummary | string
+  ): Promise<{ projectRoot: string; promotion: PromotionSummary } | undefined> {
+    const projectRoot = latestPromotionsProjectRoot ?? latestStatus?.projectRoot ?? (await selectProjectRoot(output));
+    if (!projectRoot) {
+      return undefined;
+    }
+    if (typeof promotion === "object" && promotion?.runId) {
+      return { projectRoot, promotion };
+    }
+    if (typeof promotion === "string") {
+      const found = latestPromotions.find((item) => item.runId === promotion || item.branch === promotion || item.worktreeRoot === promotion);
+      if (found) {
+        return { projectRoot, promotion: found };
+      }
+    }
+    if (latestPromotions.length === 0 || latestPromotionsProjectRoot !== projectRoot) {
+      await refreshPromotionsForProject(projectRoot);
+    }
+    if (latestPromotions.length === 0) {
+      await showBlocker(output, {
+        title: "No GovKB promotions found",
+        action: RUN_AUTO_PROMOTE_ACTION
+      });
+      return undefined;
+    }
+    const picked = await vscode.window.showQuickPick(
+      latestPromotions.map((item) => ({
+        label: item.runId,
+        description: item.state,
+        detail: item.branch ?? item.worktreeRoot,
+        promotion: item
+      })),
+      { title: "Select GovKB promotion" }
+    );
+    return picked ? { projectRoot, promotion: picked.promotion } : undefined;
+  }
+
+  async function openPromotion(promotion?: PromotionSummary | string): Promise<void> {
+    const selected = await selectPromotion(promotion);
+    if (!selected) {
+      return;
+    }
+    if (!selected.promotion.digestPath) {
+      await showBlocker(output, {
+        title: "Promotion digest is not available",
+        action: OPEN_OUTPUT_ACTION
+      });
+      return;
+    }
+    await vscode.window.showTextDocument(vscode.Uri.file(selected.promotion.digestPath), { preview: true });
+  }
+
+  async function showPromotion(promotion?: PromotionSummary | string): Promise<void> {
+    const selected = await selectPromotion(promotion);
+    if (!selected) {
+      return;
+    }
+    output.show(true);
+    const result = await runner.run(promotionShowCommand(settingsFromVscode(), selected.projectRoot, selected.promotion.runId));
+    if (result.exitCode !== 0) {
+      await showBlocker(output, {
+        title: "GovKB promotion details failed",
+        action: OPEN_OUTPUT_ACTION,
+        detail: result.stderr || result.stdout
+      });
+    }
+  }
+
+  async function markSelectedPromotion(
+    decision: "accepted" | "rejected",
+    promotion?: PromotionSummary | string
+  ): Promise<void> {
+    const selected = await selectPromotion(promotion);
+    if (!selected) {
+      return;
+    }
+    const reason = await vscode.window.showInputBox({
+      title: `Mark GovKB promotion ${decision}`,
+      prompt: "Review reason",
+      ignoreFocusOut: true
+    });
+    if (!reason) {
+      return;
+    }
+    try {
+      const payload = await markPromotionReviewed(
+        settingsFromVscode(),
+        selected.projectRoot,
+        selected.promotion.runId,
+        decision,
+        reason,
+        runner
+      );
+      latestPromotions = payload.promotions;
+      latestPromotionsProjectRoot = selected.projectRoot;
+      promotionsProvider.setRows(promotionRows(latestPromotions));
+    } catch (error) {
+      await showBlocker(output, {
+        title: "GovKB promotion review update failed",
+        action: OPEN_OUTPUT_ACTION,
+        detail: errorDetail(error)
+      });
+    }
+  }
+
+  async function archiveSelectedPromotion(promotion?: PromotionSummary | string): Promise<void> {
+    const selected = await selectPromotion(promotion);
+    if (!selected) {
+      return;
+    }
+    const reason = await vscode.window.showInputBox({
+      title: "Archive GovKB promotion",
+      prompt: "Archive reason",
+      ignoreFocusOut: true
+    });
+    if (reason === undefined) {
+      return;
+    }
+    try {
+      const payload = await archivePromotion(
+        settingsFromVscode(),
+        selected.projectRoot,
+        selected.promotion.runId,
+        reason || undefined,
+        runner
+      );
+      latestPromotions = payload.promotions;
+      latestPromotionsProjectRoot = selected.projectRoot;
+      promotionsProvider.setRows(promotionRows(latestPromotions));
+    } catch (error) {
+      await showBlocker(output, {
+        title: "GovKB promotion archive failed",
         action: OPEN_OUTPUT_ACTION,
         detail: errorDetail(error)
       });
@@ -289,6 +484,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.window.registerTreeDataProvider("govkb.status", statusProvider),
     vscode.window.registerTreeDataProvider("govkb.capabilities", capabilitiesProvider),
     vscode.window.registerTreeDataProvider("govkb.candidates", candidatesProvider),
+    vscode.window.registerTreeDataProvider("govkb.promotions", promotionsProvider),
     vscode.window.registerTreeDataProvider("govkb.reports", reportsProvider)
   );
 
@@ -299,6 +495,65 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("govkb.openOutput", () => output.show(true)),
     vscode.commands.registerCommand("govkb.openReport", async (reportPath?: string) => {
       await openReport(reportPath);
+    }),
+    vscode.commands.registerCommand("govkb.openPromotion", async (promotion?: PromotionSummary | string) => {
+      await openPromotion(promotion);
+    }),
+    vscode.commands.registerCommand("govkb.showPromotion", async (promotion?: PromotionSummary | string) => {
+      await runWithProgress(commandState, output, "showPromotion", "Show Promotion Details", async () => {
+        await showPromotion(promotion);
+      });
+    }),
+    vscode.commands.registerCommand("govkb.markPromotionAccepted", async (promotion?: PromotionSummary | string) => {
+      await runWithProgress(commandState, output, "markPromotionAccepted", "Mark Promotion Accepted", async () => {
+        if (!(await requireTrusted(output))) {
+          return;
+        }
+        await markSelectedPromotion("accepted", promotion);
+      });
+    }),
+    vscode.commands.registerCommand("govkb.markPromotionRejected", async (promotion?: PromotionSummary | string) => {
+      await runWithProgress(commandState, output, "markPromotionRejected", "Mark Promotion Rejected", async () => {
+        if (!(await requireTrusted(output))) {
+          return;
+        }
+        await markSelectedPromotion("rejected", promotion);
+      });
+    }),
+    vscode.commands.registerCommand("govkb.archivePromotion", async (promotion?: PromotionSummary | string) => {
+      await runWithProgress(commandState, output, "archivePromotion", "Archive Promotion", async () => {
+        if (!(await requireTrusted(output))) {
+          return;
+        }
+        await archiveSelectedPromotion(promotion);
+      });
+    }),
+    vscode.commands.registerCommand("govkb.refreshPromotions", async () => {
+      await runWithProgress(commandState, output, "refreshPromotions", "Refresh Promotions", async (progress) => {
+        progress.report({ message: "Refreshing promotions..." });
+        await refreshPromotionsForProject();
+      });
+    }),
+    vscode.commands.registerCommand("govkb.promoteAuto", async () => {
+      await runWithProgress(commandState, output, "promoteAuto", "Auto Promote Learned Updates", async (progress) => {
+        if (!(await requireTrusted(output))) {
+          return;
+        }
+        const projectRoot = await selectProjectRoot(output);
+        if (!projectRoot) {
+          return;
+        }
+        progress.report({ message: "Creating isolated promotion review..." });
+        const result = await runAutoPromote(settingsFromVscode(), projectRoot, runner);
+        if (result.promotionsJson) {
+          latestPromotions = result.promotionsJson.promotions;
+          latestPromotionsProjectRoot = projectRoot;
+          promotionsProvider.setRows(promotionRows(latestPromotions));
+        }
+        if (!result.ok && result.blocker) {
+          await showBlocker(output, result.blocker);
+        }
+      });
     }),
     vscode.commands.registerCommand("govkb.openLatestReport", async () => {
       await runWithProgress(commandState, output, "openLatestReport", "Open Latest Report", async () => {
@@ -320,6 +575,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         const settings = settingsFromVscode();
         progress.report({ message: "Running setup sequence..." });
         const result = await runOneClickSetup(settings, projectRoot, runner, async (command) => {
@@ -343,6 +599,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         progress.report({ message: "Applying governed package..." });
         const result = await runOneClickApply(settingsFromVscode(), projectRoot, runner);
         if (result.statusJson) {
@@ -362,6 +619,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         progress.report({ message: "Validating project..." });
         const result = await runner.run(validateCommand(settingsFromVscode(), projectRoot));
         await refreshStatus(projectRoot, false);
@@ -380,6 +638,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         progress.report({ message: "Refreshing status..." });
         await refreshStatus(projectRoot);
       });
@@ -394,6 +653,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         progress.report({ message: "Running dry-run review..." });
         const result = await runMemoryReviewDryRun(settingsFromVscode(), projectRoot, runner);
         if (!result.ok && result.blocker) {
@@ -415,6 +675,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         progress.report({ message: "Running apply review..." });
         const result = await runMemoryReviewApply(settingsFromVscode(), projectRoot, runner);
         if (!result.ok && result.blocker) {
@@ -424,6 +685,7 @@ export function activate(context: vscode.ExtensionContext): void {
         progress.report({ message: "Refreshing reports and candidates..." });
         await refreshReportsForProject(projectRoot);
         await refreshCandidatesForProject(projectRoot);
+        await refreshPromotionsForProject(projectRoot);
         await refreshStatus(projectRoot, false);
       });
     }),
@@ -433,6 +695,7 @@ export function activate(context: vscode.ExtensionContext): void {
         if (!projectRoot) {
           return;
         }
+        rememberProjectRoot(projectRoot);
         progress.report({ message: "Refreshing candidates..." });
         await refreshCandidatesForProject(projectRoot);
       });
@@ -442,7 +705,58 @@ export function activate(context: vscode.ExtensionContext): void {
   statusProvider.setRows(statusRows());
   capabilitiesProvider.setRows(capabilityRows());
   candidatesProvider.setRows(candidateRows());
+  promotionsProvider.setRows(promotionRows());
   reportsProvider.setRows(reportRows());
+
+  async function refreshProjectSurface(projectRoot: string): Promise<void> {
+    const status = await refreshStatus(projectRoot, false);
+    if (!status?.project.id) {
+      return;
+    }
+    await refreshCandidatesForProject(projectRoot);
+    await refreshPromotionsForProject(projectRoot);
+    await refreshReportsForProject(projectRoot);
+  }
+
+  async function autoRefreshOnStartup(): Promise<void> {
+    const settings = settingsFromVscode();
+    if (!settings.autoRefreshOnStartup) {
+      return;
+    }
+    const storedRoot = context.workspaceState.get<string>(LAST_PROJECT_ROOT_KEY);
+    const projectRoot = storedProjectRootForWorkspace(vscode.workspace.workspaceFolders, storedRoot);
+    if (!projectRoot) {
+      return;
+    }
+    output.appendLine(`GovKB: auto-refreshing ${projectRoot}`);
+    await refreshProjectSurface(projectRoot);
+  }
+
+  function startMonitoring(): void {
+    const intervalSeconds = settingsFromVscode().monitorIntervalSeconds;
+    if (!intervalSeconds) {
+      return;
+    }
+    monitor = setInterval(() => {
+      const storedRoot = context.workspaceState.get<string>(LAST_PROJECT_ROOT_KEY);
+      const projectRoot = latestStatus?.projectRoot ?? storedProjectRootForWorkspace(vscode.workspace.workspaceFolders, storedRoot);
+      if (!projectRoot) {
+        return;
+      }
+      output.appendLine(`GovKB: monitoring refresh for ${projectRoot}`);
+      void refreshProjectSurface(projectRoot);
+    }, intervalSeconds * 1000);
+    context.subscriptions.push({
+      dispose: () => {
+        if (monitor) {
+          clearInterval(monitor);
+        }
+      }
+    });
+  }
+
+  void autoRefreshOnStartup();
+  startMonitoring();
 }
 
 export function deactivate(): void {

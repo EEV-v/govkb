@@ -17,6 +17,17 @@ def _packaged_memory_review_script() -> Path:
     return package_root / "adapters" / "codex" / "bin" / "codex-memory-review"
 
 
+def _memory_review_command(script: Path) -> list[str]:
+    """Run Python memory-review scripts with the active GovKB interpreter."""
+    try:
+        first_line = script.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except IndexError:
+        first_line = ""
+    if "python" in first_line.lower():
+        return [sys.executable, str(script)]
+    return [str(script)]
+
+
 def run_review_memory(args) -> int:
     """Run the assistant memory-review adapter."""
     if args.assistant != "codex":
@@ -33,7 +44,7 @@ def run_review_memory(args) -> int:
         return 1
 
     project_root = Path(args.project_root).resolve()
-    cmd = [str(script), "--once", "--project-root", str(project_root)]
+    cmd = [*_memory_review_command(script), "--once", "--project-root", str(project_root)]
     if getattr(args, "dry_run", False):
         cmd.append("--dry-run")
     if getattr(args, "lookback_days", None) is not None:

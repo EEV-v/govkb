@@ -10,5 +10,25 @@ else
   export PYTHONPATH="${REPO_ROOT}/src"
 fi
 
-exec python3 -m govkb.cli "$@"
+python_candidates=()
+if [[ -n "${GOVKB_PYTHON:-}" ]]; then
+  python_candidates+=("${GOVKB_PYTHON}")
+fi
+python_candidates+=(
+  "${HOME}/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3"
+  "python3.12"
+  "python3.11"
+  "python3"
+)
 
+for python in "${python_candidates[@]}"; do
+  if ! command -v "${python}" >/dev/null 2>&1; then
+    continue
+  fi
+  if "${python}" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' >/dev/null 2>&1; then
+    exec "${python}" -m govkb.cli "$@"
+  fi
+done
+
+echo "error: govkb-dev requires Python 3.11 or newer; set GOVKB_PYTHON to a compatible interpreter" >&2
+exit 1

@@ -4,7 +4,10 @@
   "governedRoot": "/tmp/govkb-poc/project/.governed",
   "project": {
     "id": "demo-project",
-    "currentRelease": "unreleased"
+    "currentRelease": "unreleased",
+    "gitRevision": null,
+    "governedDirty": false,
+    "governedStatus": []
   },
   "validation": {
     "status": "ok",
@@ -35,6 +38,18 @@
       "appliedAt": null,
       "materializedCapabilities": []
     }
+  },
+  "skillUpdates": {
+    "state": "not-applied",
+    "repoRevision": null,
+    "appliedRevision": null,
+    "governedDirty": false,
+    "pendingLocalMemory": {
+      "available": false,
+      "safePromotionCount": 0,
+      "rejectedCount": 0,
+      "pendingCount": 0,
+      "items": []
+    }
   }
 }
-

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { parseCandidatesPayload, parseReportSummaryPayload, parseStatusPayload } from "../../jsonParsers";
+import { parseCandidatesPayload, parsePromotionsPayload, parseReportSummaryPayload, parseStatusPayload } from "../../jsonParsers";
 
 function fixture(name: string): string {
   return readFileSync(join(process.cwd(), "src", "test", "fixtures", name), "utf8");
@@ -11,7 +11,9 @@ function fixture(name: string): string {
 test("parseStatusPayload accepts fixture contract", () => {
   const payload = parseStatusPayload(fixture("status.sample.json"));
   assert.equal(payload.project.id, "demo-project");
+  assert.equal(payload.project.governedDirty, false);
   assert.equal(payload.installState.codex.status, "missing");
+  assert.equal(payload.skillUpdates.state, "not-applied");
 });
 
 test("parseCandidatesPayload accepts fixture contract", () => {
@@ -29,4 +31,10 @@ test("parseReportSummaryPayload rejects raw transcript summaries", () => {
 test("parseReportSummaryPayload accepts sanitized fixture", () => {
   const payload = parseReportSummaryPayload(fixture("report-summary.sample.json"));
   assert.equal(payload.reports[0].containsRawTranscript, false);
+});
+
+test("parsePromotionsPayload accepts lifecycle fixture", () => {
+  const payload = parsePromotionsPayload(fixture("promotions.sample.json"));
+  assert.equal(payload.promotions[0].state, "ready-for-review");
+  assert.equal(payload.promotions[0].status.length, 2);
 });

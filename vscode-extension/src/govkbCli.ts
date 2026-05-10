@@ -40,6 +40,56 @@ export function applyCodexCommand(settings: GovkbSettings, projectRoot: string):
   return buildGovkbCommand(settings, withCodexHome(["apply", "codex", "--project-root", projectRoot], settings.codexHome));
 }
 
+export function promoteAutoCommand(settings: GovkbSettings, projectRoot: string): CliCommand {
+  return buildGovkbCommand(settings, withCodexHome(["promote", projectRoot, "--auto"], settings.codexHome));
+}
+
+export function promotionsListJsonCommand(settings: GovkbSettings, projectRoot: string): CliCommand {
+  return buildGovkbCommand(settings, [...withCodexHome(["promotions", "list", projectRoot], settings.codexHome), "--json"]);
+}
+
+export function promotionShowCommand(settings: GovkbSettings, projectRoot: string, promotion: string): CliCommand {
+  return buildGovkbCommand(settings, withCodexHome(["promotions", "show", promotion, "--project-root", projectRoot], settings.codexHome));
+}
+
+export function promotionMarkReviewedCommand(
+  settings: GovkbSettings,
+  projectRoot: string,
+  promotion: string,
+  decision: "accepted" | "rejected",
+  reason: string,
+  reviewer?: string
+): CliCommand {
+  const args = [
+    "promotions",
+    "mark-reviewed",
+    promotion,
+    "--project-root",
+    projectRoot,
+    "--decision",
+    decision,
+    "--reason",
+    reason
+  ];
+  if (reviewer) {
+    args.push("--reviewer", reviewer);
+  }
+  return buildGovkbCommand(settings, [...withCodexHome(args, settings.codexHome), "--json"]);
+}
+
+export function promotionArchiveCommand(
+  settings: GovkbSettings,
+  projectRoot: string,
+  promotion: string,
+  reason?: string
+): CliCommand {
+  const args = ["promotions", "archive", promotion, "--project-root", projectRoot];
+  if (reason) {
+    args.push("--reason", reason);
+  }
+  return buildGovkbCommand(settings, [...withCodexHome(args, settings.codexHome), "--json"]);
+}
+
 export function candidatesJsonCommand(settings: GovkbSettings, projectRoot: string): CliCommand {
   return buildGovkbCommand(settings, ["candidates", "list", projectRoot, "--json"]);
 }

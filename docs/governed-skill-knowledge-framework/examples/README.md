@@ -11,12 +11,14 @@ These examples show how GovKB is intended to feel in real project use. They are 
 | [Clearing Governed Workflow](clearing-governed-workflow.md) | A real project capability can guide feature, bugfix, and support workflows without copying local assumptions into the repo. |
 | [New Capability Candidate](new-capability-candidate.md) | Repeated unmatched work can become a reviewed capability instead of silently creating an active skill. |
 | [Isolated Automation Review](isolated-automation-review.md) | Automated promotion creates a reviewable branch worktree without dirtying the active checkout. |
+| [Strict Ready Demo Project](strict-ready-demo-project/README.md) | A sanitized project fixture validates cleanly with strict gates before Codex materialization. |
 
 ## Common Demo Setup
 
 ```bash
-govkb validate --strict /path/to/project
-govkb apply codex --project-root /path/to/project --codex-home "$CODEX_HOME"
+govkb validate --strict docs/governed-skill-knowledge-framework/examples/strict-ready-demo-project
+govkb apply codex --project-root docs/governed-skill-knowledge-framework/examples/strict-ready-demo-project --codex-home /tmp/govkb-demo-codex-home
+govkb status docs/governed-skill-knowledge-framework/examples/strict-ready-demo-project --codex-home /tmp/govkb-demo-codex-home --json
 ```
 
 In all examples, `.governed/` is the source of truth. Local Codex skills are derived outputs.

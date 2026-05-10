@@ -1,4 +1,4 @@
-import { CandidatesPayload, ReportSummaryPayload, StatusPayload } from "./types";
+import { CandidatesPayload, PromotionsPayload, ReportSummaryPayload, StatusPayload } from "./types";
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -37,6 +37,9 @@ export function parseStatusPayload(text: string): StatusPayload {
   assertString(payload.governedRoot, "governedRoot");
   if (!isObject(payload.project) || !isObject(payload.validation) || !isObject(payload.kbHealth) || !isObject(payload.installState)) {
     throw new Error("invalid status payload: missing core sections");
+  }
+  if (!isObject(payload.skillUpdates)) {
+    throw new Error("invalid status payload: missing skillUpdates");
   }
   assertArray(payload.capabilities, "capabilities");
   assertArray(payload.adapters, "adapters");
@@ -88,4 +91,31 @@ export function parseReportSummaryPayload(text: string): ReportSummaryPayload {
     }
   }
   return payload as unknown as ReportSummaryPayload;
+}
+
+export function parsePromotionsPayload(text: string): PromotionsPayload {
+  const payload = JSON.parse(text) as unknown;
+  if (!isObject(payload)) {
+    throw new Error("invalid promotions payload: expected object");
+  }
+  if (payload.schemaVersion !== 1) {
+    throw new Error("invalid promotions payload: unsupported schemaVersion");
+  }
+  assertString(payload.projectRoot, "projectRoot");
+  assertString(payload.codexHome, "codexHome");
+  assertString(payload.projectId, "projectId");
+  assertString(payload.promotionsRoot, "promotionsRoot");
+  const promotions = assertArray(payload.promotions, "promotions");
+  for (const [index, promotion] of promotions.entries()) {
+    if (!isObject(promotion)) {
+      throw new Error(`invalid promotions[${index}]: expected object`);
+    }
+    assertString(promotion.runId, `promotions[${index}].runId`);
+    assertString(promotion.worktreeRoot, `promotions[${index}].worktreeRoot`);
+    assertString(promotion.state, `promotions[${index}].state`);
+    assertString(promotion.metadataPath, `promotions[${index}].metadataPath`);
+    assertArray(promotion.reportPaths, `promotions[${index}].reportPaths`);
+    assertArray(promotion.status, `promotions[${index}].status`);
+  }
+  return payload as unknown as PromotionsPayload;
 }

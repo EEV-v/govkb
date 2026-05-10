@@ -3,12 +3,16 @@ import {
   candidatesJsonCommand,
   initKbCommand,
   installCommand,
+  promoteAutoCommand,
+  promotionArchiveCommand,
+  promotionMarkReviewedCommand,
+  promotionsListJsonCommand,
   reviewMemoryApplyCommand,
   reviewMemoryCommand,
   statusJsonCommand,
   validateCommand
 } from "./govkbCli";
-import { parseCandidatesPayload, parseStatusPayload } from "./jsonParsers";
+import { parseCandidatesPayload, parsePromotionsPayload, parseStatusPayload } from "./jsonParsers";
 import { checkGovkbRuntime, RuntimeProbe } from "./runtime";
 import { CliCommand, CliRunner, FlowResult, GovkbSettings } from "./types";
 
@@ -172,4 +176,82 @@ export async function listCandidates(settings: GovkbSettings, projectRoot: strin
     throw new Error(result.stderr || result.stdout || "candidate listing failed");
   }
   return parseCandidatesPayload(result.stdout);
+}
+
+export async function runAutoPromote(
+  settings: GovkbSettings,
+  projectRoot: string,
+  runner: CliRunner
+): Promise<FlowResult> {
+  const commands: CliCommand[] = [];
+  const promote = await runAndCollect(runner, promoteAutoCommand(settings, projectRoot), commands);
+  if (promote.exitCode !== 0) {
+    return {
+      ok: false,
+      commands,
+      blocker: {
+        title: "GovKB automated promotion failed",
+        action: "Open the GovKB output channel",
+        detail: promote.stderr || promote.stdout
+      }
+    };
+  }
+  const promotions = await runAndCollect(runner, promotionsListJsonCommand(settings, projectRoot), commands);
+  if (promotions.exitCode !== 0) {
+    return {
+      ok: false,
+      commands,
+      blocker: {
+        title: "GovKB promotions refresh failed",
+        action: "Open the GovKB output channel",
+        detail: promotions.stderr || promotions.stdout
+      }
+    };
+  }
+  return {
+    ok: true,
+    commands,
+    promotionsJson: parsePromotionsPayload(promotions.stdout)
+  };
+}
+
+export async function listPromotions(settings: GovkbSettings, projectRoot: string, runner: CliRunner) {
+  const command = promotionsListJsonCommand(settings, projectRoot);
+  const result = await runner.run(command);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || result.stdout || "promotion listing failed");
+  }
+  return parsePromotionsPayload(result.stdout);
+}
+
+export async function markPromotionReviewed(
+  settings: GovkbSettings,
+  projectRoot: string,
+  promotion: string,
+  decision: "accepted" | "rejected",
+  reason: string,
+  runner: CliRunner,
+  reviewer?: string
+) {
+  const command = promotionMarkReviewedCommand(settings, projectRoot, promotion, decision, reason, reviewer);
+  const result = await runner.run(command);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || result.stdout || "promotion review update failed");
+  }
+  return listPromotions(settings, projectRoot, runner);
+}
+
+export async function archivePromotion(
+  settings: GovkbSettings,
+  projectRoot: string,
+  promotion: string,
+  reason: string | undefined,
+  runner: CliRunner
+) {
+  const command = promotionArchiveCommand(settings, projectRoot, promotion, reason);
+  const result = await runner.run(command);
+  if (result.exitCode !== 0) {
+    throw new Error(result.stderr || result.stdout || "promotion archive failed");
+  }
+  return listPromotions(settings, projectRoot, runner);
 }

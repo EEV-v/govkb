@@ -20,20 +20,22 @@ test("resolveSettings sanitizes invalid enum and timeout values", () => {
       classifierReasoning: "wild",
       setupMode: "silentDownload",
       reviewTimeoutSeconds: -10,
-      reviewMaxSessions: -2
+      reviewMaxSessions: -2,
+      monitorIntervalSeconds: 10
     })
   );
   assert.equal(settings.classifierReasoning, undefined);
   assert.equal(settings.setupMode, "guidedInstall");
   assert.equal(settings.reviewTimeoutSeconds, undefined);
   assert.equal(settings.reviewMaxSessions, 1);
+  assert.equal(settings.monitorIntervalSeconds, undefined);
 });
 
 test("resolveSettings keeps optional classifier overrides only when configured", () => {
   const defaults = resolveSettings(new FakeConfig({}));
   assert.equal(defaults.classifierModel, undefined);
   assert.equal(defaults.classifierReasoning, undefined);
-  assert.equal(defaults.reviewTimeoutSeconds, undefined);
+  assert.equal(defaults.reviewTimeoutSeconds, 180);
 
   const settings = resolveSettings(
     new FakeConfig({
@@ -58,4 +60,15 @@ test("resolveSettings keeps configured command and Codex home", () => {
   assert.equal(settings.command, "python-module");
   assert.equal(settings.pythonPath, "/usr/bin/python3");
   assert.equal(settings.codexHome, "/tmp/codex-home");
+});
+
+test("resolveSettings keeps startup and monitoring preferences", () => {
+  const settings = resolveSettings(
+    new FakeConfig({
+      autoRefreshOnStartup: false,
+      monitorIntervalSeconds: 120
+    })
+  );
+  assert.equal(settings.autoRefreshOnStartup, false);
+  assert.equal(settings.monitorIntervalSeconds, 120);
 });

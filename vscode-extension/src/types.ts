@@ -11,6 +11,8 @@ export interface GovkbSettings {
   reviewTimeoutSeconds?: number;
   reviewMaxSessions: number;
   defaultDryRun: boolean;
+  autoRefreshOnStartup: boolean;
+  monitorIntervalSeconds?: number;
 }
 
 export interface CliCommand {
@@ -47,6 +49,7 @@ export interface FlowResult {
   commands: CliCommand[];
   blocker?: Blocker;
   statusJson?: StatusPayload;
+  promotionsJson?: PromotionsPayload;
 }
 
 export interface ValidationMessage {
@@ -61,6 +64,9 @@ export interface StatusPayload {
   project: {
     id: string | null;
     currentRelease: string;
+    gitRevision?: string | null;
+    governedDirty?: boolean;
+    governedStatus?: string[];
   };
   validation: {
     status: "ok" | "error";
@@ -77,6 +83,39 @@ export interface StatusPayload {
   installState: {
     codex: CodexInstallState;
   };
+  skillUpdates: SkillUpdatesPayload;
+}
+
+export type SkillUpdateState =
+  | "current"
+  | "not-applied"
+  | "apply-available"
+  | "workspace-changes"
+  | "learned-updates"
+  | "unknown";
+
+export interface SkillUpdatesPayload {
+  state: SkillUpdateState;
+  repoRevision: string | null;
+  appliedRevision: string | null;
+  governedDirty: boolean;
+  pendingLocalMemory: PendingLocalMemoryPayload;
+}
+
+export interface PendingLocalMemoryPayload {
+  available: boolean;
+  safePromotionCount: number;
+  rejectedCount: number;
+  pendingCount: number;
+  items: PendingLocalMemoryItem[];
+}
+
+export interface PendingLocalMemoryItem {
+  capabilityId: string;
+  reason: string;
+  additions: number;
+  repoPath: string;
+  localPath: string;
 }
 
 export interface CapabilitySummary {
@@ -136,6 +175,41 @@ export interface ReportSummary {
     stagedCandidates: number;
   };
   containsRawTranscript: false;
+}
+
+export interface PromotionsPayload {
+  schemaVersion: 1;
+  projectRoot: string;
+  codexHome: string;
+  projectId: string;
+  promotionsRoot: string;
+  promotions: PromotionSummary[];
+}
+
+export interface PromotionReview {
+  decision?: string;
+  reviewer?: string;
+  reason?: string;
+  reviewedAt?: string;
+}
+
+export interface PromotionArchive {
+  reason?: string;
+  archivedAt?: string;
+}
+
+export interface PromotionSummary {
+  runId: string;
+  branch: string | null;
+  head: string | null;
+  worktreeRoot: string;
+  digestPath: string | null;
+  reportPaths: string[];
+  status: string[];
+  state: string;
+  metadataPath: string;
+  review: PromotionReview | null;
+  archive: PromotionArchive | null;
 }
 
 export interface TreeRow {

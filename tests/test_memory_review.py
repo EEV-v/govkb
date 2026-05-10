@@ -453,6 +453,49 @@ required_sections = ["Working Agreement"]
             self.assertEqual(stats.indexed_rows, 0)
             self.assertEqual(stats.selected_file_only, 1)
 
+    def test_packaged_scheduler_skips_index_rows_without_session_files(self) -> None:
+        module = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir) / ".codex"
+            sessions_root = codex_home / "sessions"
+            sessions_root.mkdir(parents=True, exist_ok=True)
+            session_index = codex_home / "session_index.jsonl"
+            session_index.write_text(
+                json.dumps(
+                    {
+                        "id": "019cfb86-ff97-7913-b154-905c3cd1c5c7",
+                        "thread_name": "Missing Session File",
+                        "updated_at": "2026-03-17T11:20:57.17561Z",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            original_sessions_dir = module.SESSIONS_DIR
+            original_session_index = module.SESSION_INDEX
+            original_log = module.log
+            try:
+                module.SESSIONS_DIR = sessions_root
+                module.SESSION_INDEX = session_index
+                module.log = lambda _message: None
+                sessions, stats = module.load_sessions(
+                    argparse.Namespace(
+                        session_file=None,
+                        lookback_days=30,
+                        max_sessions=None,
+                    ),
+                    {"processed_sessions": {}},
+                )
+            finally:
+                module.SESSIONS_DIR = original_sessions_dir
+                module.SESSION_INDEX = original_session_index
+                module.log = original_log
+
+            self.assertEqual(sessions, [])
+            self.assertEqual(stats.indexed_rows, 1)
+            self.assertEqual(stats.indexed_missing_files, 1)
+
     def test_installed_scheduler_infers_codex_home_from_script_location(self) -> None:
         packaged_script = Path(next(iter(govkb.__path__))).resolve() / "adapters" / "codex" / "bin" / "codex-memory-review"
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1526,6 +1569,29 @@ required_sections = ["Working Agreement"]
                     evidence,
                     timeout=30,
                 )
+
+    def test_packaged_scheduler_discovers_codex_app_cli_when_path_is_minimal(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex = Path(temp_dir) / "Codex.app" / "Contents" / "Resources" / "codex"
+            codex.parent.mkdir(parents=True)
+            codex.write_text("#!/bin/sh\n", encoding="utf-8")
+            codex.chmod(0o755)
+
+            self.assertIn(
+                Path("/Applications/Codex.app/Contents/Resources/codex"),
+                scheduler._common_codex_candidates(Path(temp_dir)),
+            )
+            with patch.dict(os.environ, {"CODEX_EXECUTABLE": ""}), patch.object(
+                scheduler.shutil,
+                "which",
+                return_value=None,
+            ), patch.object(
+                scheduler,
+                "_common_codex_candidates",
+                return_value=(codex,),
+            ):
+                self.assertEqual(scheduler.find_codex(), str(codex))
 
     def test_packaged_scheduler_passes_low_cost_classifier_options_to_codex_exec(self) -> None:
         scheduler = load_packaged_memory_review_script()

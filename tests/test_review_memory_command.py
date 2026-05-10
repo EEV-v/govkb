@@ -6,6 +6,7 @@ import argparse
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 from unittest.mock import patch
 import unittest
@@ -70,6 +71,50 @@ class ReviewMemoryCommandTests(unittest.TestCase):
             self.assertEqual(cmd[cmd.index("--classifier-codex-home") + 1], str(classifier_home))
             self.assertIn("--no-auto-promote", cmd)
             self.assertEqual(captured["env"]["GOVKB_PROJECT_ROOT"], str(project_root.resolve()))
+
+    def test_review_memory_runs_python_script_with_current_interpreter(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = root / "Project"
+            codex_home = root / "codex-home"
+            script = root / "codex-memory-review"
+            project_root.mkdir()
+            codex_home.mkdir()
+            script.write_text("#!/usr/bin/env python3\nraise SystemExit(0)\n", encoding="utf-8")
+
+            captured: dict[str, object] = {}
+
+            def fake_run(cmd, **kwargs):
+                captured["cmd"] = list(cmd)
+                return subprocess.CompletedProcess(cmd, 0)
+
+            args = argparse.Namespace(
+                assistant="codex",
+                project_root=project_root,
+                dry_run=True,
+                lookback_days=None,
+                max_sessions=1,
+                verbose=False,
+                codex_timeout=120,
+                classifier_codex_home=None,
+                codex_model=None,
+                codex_reasoning=None,
+                session_file=None,
+                auto_promote=True,
+            )
+
+            with patch.dict(
+                os.environ,
+                {
+                    "CODEX_HOME": str(codex_home),
+                    "GOVKB_CODEX_MEMORY_REVIEW": str(script),
+                },
+            ), patch("govkb.commands.review_memory.subprocess.run", side_effect=fake_run):
+                exit_code = run_review_memory(args)
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(captured["cmd"][0], sys.executable)
+            self.assertEqual(captured["cmd"][1], str(script))
 
 
 if __name__ == "__main__":

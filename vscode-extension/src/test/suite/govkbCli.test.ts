@@ -1,6 +1,23 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { applyCodexCommand, buildGovkbCommand, candidatesJsonCommand, initKbCommand, installCommand, reviewMemoryApplyCommand, reviewMemoryCommand, reviewMemoryDryRunCommand, runCliCommand, statusJsonCommand, validateCommand } from "../../govkbCli";
+import {
+  applyCodexCommand,
+  buildGovkbCommand,
+  candidatesJsonCommand,
+  initKbCommand,
+  installCommand,
+  promoteAutoCommand,
+  promotionArchiveCommand,
+  promotionMarkReviewedCommand,
+  promotionShowCommand,
+  promotionsListJsonCommand,
+  reviewMemoryApplyCommand,
+  reviewMemoryCommand,
+  reviewMemoryDryRunCommand,
+  runCliCommand,
+  statusJsonCommand,
+  validateCommand
+} from "../../govkbCli";
 import { defaultSettings } from "../../settings";
 
 test("buildGovkbCommand uses executable plus argument array", () => {
@@ -27,7 +44,57 @@ test("command builders preserve first-slice CLI contracts", () => {
   assert.deepEqual(candidatesJsonCommand(settings, "/repo").args, ["candidates", "list", "/repo", "--json"]);
 });
 
-test("memory review command is dry-run and lets CLI classifier defaults apply", () => {
+test("promotion command builders preserve lifecycle CLI contracts", () => {
+  const settings = { ...defaultSettings(), codexHome: "/tmp/codex-home" };
+  assert.deepEqual(promoteAutoCommand(settings, "/repo").args, ["promote", "/repo", "--auto", "--codex-home", "/tmp/codex-home"]);
+  assert.deepEqual(promotionsListJsonCommand(settings, "/repo").args, [
+    "promotions",
+    "list",
+    "/repo",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--json"
+  ]);
+  assert.deepEqual(promotionShowCommand(settings, "/repo", "run-1").args, [
+    "promotions",
+    "show",
+    "run-1",
+    "--project-root",
+    "/repo",
+    "--codex-home",
+    "/tmp/codex-home"
+  ]);
+  assert.deepEqual(promotionMarkReviewedCommand(settings, "/repo", "run-1", "accepted", "Looks good.", "reviewer").args, [
+    "promotions",
+    "mark-reviewed",
+    "run-1",
+    "--project-root",
+    "/repo",
+    "--decision",
+    "accepted",
+    "--reason",
+    "Looks good.",
+    "--reviewer",
+    "reviewer",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--json"
+  ]);
+  assert.deepEqual(promotionArchiveCommand(settings, "/repo", "run-1", "Done.").args, [
+    "promotions",
+    "archive",
+    "run-1",
+    "--project-root",
+    "/repo",
+    "--reason",
+    "Done.",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--json"
+  ]);
+});
+
+test("memory review command is dry-run and passes bounded classifier defaults", () => {
   const command = reviewMemoryDryRunCommand(defaultSettings(), "/repo");
   assert.deepEqual(command.args, [
     "review-memory",
@@ -37,7 +104,9 @@ test("memory review command is dry-run and lets CLI classifier defaults apply", 
     "/repo",
     "--dry-run",
     "--max-sessions",
-    "1"
+    "1",
+    "--codex-timeout",
+    "180"
   ]);
 });
 
@@ -50,7 +119,9 @@ test("memory review apply command omits dry-run flag", () => {
     "--project-root",
     "/repo",
     "--max-sessions",
-    "1"
+    "1",
+    "--codex-timeout",
+    "180"
   ]);
 });
 

@@ -18,6 +18,10 @@ test("package manifest contributes report and output affordances", () => {
   assert.equal(commands.has("govkb.openLatestReport"), true);
   assert.equal(commands.has("govkb.openOutput"), true);
   assert.equal(commands.has("govkb.reviewMemoryApply"), true);
+  assert.equal(commands.has("govkb.promoteAuto"), true);
+  assert.equal(commands.has("govkb.refreshPromotions"), true);
   assert.match(manifest.contributes.configuration.properties["govkb.codexHome"].description, /memory review/);
   assert.match(manifest.contributes.configuration.properties["govkb.reviewMaxSessions"].description, /keep this low/);
+  assert.match(manifest.contributes.configuration.properties["govkb.autoRefreshOnStartup"].description, /workspace opens/);
+  assert.match(manifest.contributes.configuration.properties["govkb.monitorIntervalSeconds"].description, /read-only refresh interval/);
 });

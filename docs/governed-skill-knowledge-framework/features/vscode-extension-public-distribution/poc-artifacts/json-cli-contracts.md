@@ -1,6 +1,6 @@
 # JSON CLI Contracts For VS Code Extension PoC
 
-Last updated: 2026-04-25
+Last updated: 2026-05-09
 
 These fixture contracts are implementation targets for the first engineering slice. They are intentionally small, deterministic, and free of user transcripts or secrets.
 
@@ -19,6 +19,9 @@ Required fields:
 - `governedRoot`
 - `project.id`
 - `project.currentRelease`
+- `project.gitRevision`
+- `project.governedDirty`
+- `project.governedStatus`
 - `validation.status`
 - `validation.warnings`
 - `validation.errors`
@@ -26,9 +29,16 @@ Required fields:
 - `kbHealth.suggestedRemediation`
 - `capabilities[]`
 - `adapters[]`
+- `releases[]`
 - `installState.codex`
+- `skillUpdates.state`
+- `skillUpdates.repoRevision`
+- `skillUpdates.appliedRevision`
+- `skillUpdates.governedDirty`
+- `skillUpdates.pendingLocalMemory`
 
 The extension must consume this JSON rather than parsing the current human-formatted `govkb status` output.
+The `skillUpdates` object is the single freshness indicator for repo package state, applied Codex state, and pending learned local memory.
 
 ## Candidates Contract
 
@@ -61,4 +71,3 @@ The first slice can parse memory-review report files locally after `govkb review
 - raw transcript presence flag set to false for extension-owned summaries
 
 If future GovKB adds a report-summary CLI command, it should return the same aggregate shape.
-

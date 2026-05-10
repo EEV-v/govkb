@@ -557,8 +557,8 @@ def load_sessions(args: argparse.Namespace, state: dict[str, Any]) -> tuple[list
     for sid, row in indexed_rows.items():
         if sid in sessions:
             continue
-        path = file_paths.get(sid, Path())
-        if not path.exists():
+        path = file_paths.get(sid)
+        if path is None or not path.is_file():
             continue
         sessions[sid] = SessionRef(
             id=sid,
@@ -819,6 +819,8 @@ def sanitize_session(session: SessionRef, limit: int = 45000) -> str:
 
 
 def session_project_root(session: SessionRef) -> Path | None:
+    if not session.path.is_file():
+        return None
     rows = read_jsonl(session.path)
     for row in rows:
         if row.get("type") != "session_meta":
@@ -1208,22 +1210,38 @@ Session to classify:
 """
 
 
+def _is_executable_file(path: Path) -> bool:
+    return path.is_file() and os.access(path, os.X_OK)
+
+
+def _common_codex_candidates(home: Path | None = None) -> tuple[Path, ...]:
+    resolved_home = home or Path.home()
+    candidates = [*sorted(resolved_home.glob(".nvm/versions/node/*/bin/codex"), reverse=True)]
+    candidates.extend(
+        [
+            resolved_home / ".local" / "bin" / "codex",
+            resolved_home / ".codex" / "bin" / "codex",
+            Path("/opt/homebrew/bin/codex"),
+            Path("/usr/local/bin/codex"),
+            Path("/Applications/Codex.app/Contents/Resources/codex"),
+        ]
+    )
+    return tuple(candidates)
+
+
 def find_codex() -> str:
     configured = os.environ.get("CODEX_EXECUTABLE")
     if configured:
         configured_path = Path(configured).expanduser()
-        if configured_path.exists() or shutil.which(configured):
+        if _is_executable_file(configured_path) or shutil.which(configured):
             return str(configured_path if configured_path.exists() else configured)
 
     resolved = shutil.which("codex")
     if resolved:
         return resolved
 
-    home = Path.home()
-    candidates = sorted(home.glob(".nvm/versions/node/*/bin/codex"), reverse=True)
-    candidates.append(home / ".local" / "bin" / "codex")
-    for candidate in candidates:
-        if candidate.exists():
+    for candidate in _common_codex_candidates():
+        if _is_executable_file(candidate):
             return str(candidate)
     return "codex"
 
