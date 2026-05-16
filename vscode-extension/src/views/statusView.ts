@@ -10,6 +10,10 @@ const skillUpdateLabels: Record<SkillUpdateState, string> = {
 };
 
 function skillUpdateDescription(status: StatusPayload): string {
+  const pending = status.skillUpdates.pendingLocalMemory;
+  if (status.skillUpdates.state === "learned-updates" && pending.available) {
+    return `${pending.pendingCount} learned update(s)`;
+  }
   return skillUpdateLabels[status.skillUpdates.state] ?? "unknown";
 }
 
@@ -78,20 +82,40 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
   const validationDescription = validationErrors > 0 ? `${validationErrors} error(s)` : status.validation.status;
   const kbWarnings = status.kbHealth.warnings.length;
   const skillUpdates = skillUpdateDescription(status);
+  const validationSummary = validationErrors > 0 ? "validation errors" : status.validation.status;
+  const capabilitySummary = `${status.capabilities.length} governed skill(s)`;
   const rows: TreeRow[] = [
-    { label: "Project", description: status.project.id ?? "<unknown>", tooltip: status.projectRoot },
-    { label: "Validation", description: validationDescription },
-    { label: "Capabilities", description: String(status.capabilities.length) },
-    { label: "Adapters", description: status.adapters.join(", ") || "none" },
-    { label: "KB health warnings", description: String(kbWarnings) },
-    { label: "Codex install state", description: status.installState.codex.status },
     {
-      label: "Skill updates",
+      label: status.project.id ?? "Project",
+      description: `${validationSummary}, ${capabilitySummary}`,
+      tooltip: [
+        status.projectRoot,
+        `Current release: ${status.project.currentRelease}`,
+        status.project.gitRevision ? `Git revision: ${status.project.gitRevision}` : undefined
+      ]
+        .filter(Boolean)
+        .join("\n")
+    },
+    {
+      label: "Codex skills",
+      description: status.installState.codex.status === "present" ? skillUpdates : status.installState.codex.status,
+      tooltip: skillUpdateTooltip(status),
+      command: skillUpdateCommand(status)
+    },
+    {
+      label: "Learned updates",
       description: skillUpdates,
       tooltip: skillUpdateTooltip(status),
       command: skillUpdateCommand(status)
     }
   ];
+  if (kbWarnings > 0) {
+    rows.push({
+      label: "KB health warnings",
+      description: String(kbWarnings),
+      tooltip: status.kbHealth.warnings.map((message) => `${message.location}: ${message.message}`).join("\n")
+    });
+  }
   if (validationErrors > 0) {
     rows.push({
       label: "Validation details",

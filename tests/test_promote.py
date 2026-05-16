@@ -13,6 +13,10 @@ from govkb.commands.apply import run_codex_apply
 from govkb.commands.create_capability import run_create_capability
 from govkb.commands.init import run_init
 from govkb.commands.promote import run_promote
+from govkb.core.promotion_lifecycle import promotion_metadata_path
+from govkb.core.promotion_lifecycle import read_promotion_metadata
+from govkb.core.promotion_lifecycle import reviewed_promotion_metadata
+from govkb.core.promotion_lifecycle import write_promotion_metadata
 
 
 class PromoteCommandTests(unittest.TestCase):
@@ -256,6 +260,92 @@ class PromoteCommandTests(unittest.TestCase):
             self.assertTrue(
                 (isolated_root / ".governed" / "reports" / "promotions" / "latest-promotion-digest.md").is_file()
             )
+
+    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
+    def test_auto_promote_reuses_equivalent_isolated_worktree(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _, local_memory = self._scaffold_project(temp_dir)
+            subprocess.run(["git", "init"], cwd=project_root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "govkb@example.local"], cwd=project_root, check=True)
+            subprocess.run(["git", "config", "user.name", "GovKB Test"], cwd=project_root, check=True)
+            subprocess.run(["git", "add", ".governed"], cwd=project_root, check=True)
+            subprocess.run(["git", "commit", "-m", "initial governed package"], cwd=project_root, check=True, capture_output=True)
+            local_memory.write_text(
+                local_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- Reuse equivalent auto-promotion worktrees instead of duplicating them.\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                project_root=project_root,
+                release=None,
+                assistant="codex",
+                codex_home=codex_home,
+                preview=False,
+                auto=True,
+            )
+
+            first_exit = run_promote(args)
+            second_exit = run_promote(args)
+
+            self.assertEqual(first_exit, 0)
+            self.assertEqual(second_exit, 0)
+            worktree_roots = sorted((codex_home / "memories" / "govkb" / "worktrees" / "demo-project").glob("*"))
+            self.assertEqual(len(worktree_roots), 1)
+
+    @unittest.skipIf(shutil.which("git") is None, "git is not installed")
+    def test_auto_promote_digest_separates_previously_accepted_additions(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _, local_memory = self._scaffold_project(temp_dir)
+            subprocess.run(["git", "init"], cwd=project_root, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.email", "govkb@example.local"], cwd=project_root, check=True)
+            subprocess.run(["git", "config", "user.name", "GovKB Test"], cwd=project_root, check=True)
+            subprocess.run(["git", "add", ".governed"], cwd=project_root, check=True)
+            subprocess.run(["git", "commit", "-m", "initial governed package"], cwd=project_root, check=True, capture_output=True)
+            local_memory.write_text(
+                local_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- First accepted lesson stays pending until applied.\n",
+                encoding="utf-8",
+            )
+            args = argparse.Namespace(
+                project_root=project_root,
+                release=None,
+                assistant="codex",
+                codex_home=codex_home,
+                preview=False,
+                auto=True,
+            )
+
+            self.assertEqual(run_promote(args), 0)
+            first_worktree = sorted((codex_home / "memories" / "govkb" / "worktrees" / "demo-project").glob("*"))[0]
+            first_metadata_path = promotion_metadata_path(codex_home, "demo-project", first_worktree.name)
+            first_metadata = read_promotion_metadata(first_metadata_path)
+            self.assertIsNotNone(first_metadata)
+            write_promotion_metadata(
+                first_metadata_path,
+                reviewed_promotion_metadata(
+                    first_metadata or {},
+                    state="accepted",
+                    reviewer=None,
+                    reason="Accepted in test.",
+                ),
+            )
+            local_memory.write_text(
+                local_memory.read_text(encoding="utf-8").rstrip()
+                + "\n- Second lesson is the only new review item.\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(run_promote(args), 0)
+
+            worktree_roots = sorted((codex_home / "memories" / "govkb" / "worktrees" / "demo-project").glob("*"))
+            self.assertEqual(len(worktree_roots), 2)
+            second_digest = (
+                worktree_roots[-1] / ".governed" / "reports" / "promotions" / "latest-promotion-digest.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("## New Additions To Review", second_digest)
+            self.assertIn("Addition: - Second lesson is the only new review item.", second_digest)
+            self.assertIn("## Previously Accepted Carry-Forward", second_digest)
+            self.assertIn("Accepted earlier: - First accepted lesson stays pending until applied.", second_digest)
 
 
 if __name__ == "__main__":

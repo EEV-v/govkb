@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import redirect_stderr, redirect_stdout
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import shutil
@@ -495,6 +497,273 @@ required_sections = ["Working Agreement"]
             self.assertEqual(sessions, [])
             self.assertEqual(stats.indexed_rows, 1)
             self.assertEqual(stats.indexed_missing_files, 1)
+
+    def test_packaged_scheduler_inventory_json_is_read_only(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = root / "OrgChart"
+            state_dir = root / "state-dir"
+            reports_root = root / "reports"
+            logs_root = root / "logs"
+            session_path = root / "session.jsonl"
+            memory_path = root / "long-term-memory.md"
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / ".governed").mkdir(parents=True, exist_ok=True)
+            memory_path.write_text("# Project Knowledge Steward\n\n## Working Agreement\n\n- durable note\n", encoding="utf-8")
+            session_path.write_text(
+                json.dumps(
+                    {
+                        "type": "session_meta",
+                        "payload": {
+                            "id": "session-1",
+                            "timestamp": "2026-04-24T08:15:04.645Z",
+                            "cwd": str(project_root),
+                        },
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            session = scheduler.SessionRef(
+                id="session-1",
+                thread_name="session.jsonl",
+                updated_at="2026-04-24T08:15:04.645Z",
+                path=session_path,
+                indexed=False,
+            )
+            target = scheduler.MemoryTarget(
+                skill="govkb-orgchart-project-knowledge-steward",
+                capability_id="project-knowledge-steward",
+                project_id="orgchart",
+                path=memory_path,
+                requires_explicit_acceptance=False,
+                headings=("Working Agreement",),
+                content=memory_path.read_text(encoding="utf-8"),
+                aliases=("$project-knowledge-steward",),
+                hints=("workflow",),
+                negative_hints=(),
+                project_root=project_root,
+            )
+
+            original_state_dir = scheduler.STATE_DIR
+            original_report_dir = scheduler.REPORT_DIR
+            original_log_dir = scheduler.LOG_DIR
+            original_state_file = scheduler.STATE_FILE
+            try:
+                scheduler.STATE_DIR = state_dir
+                scheduler.REPORT_DIR = reports_root
+                scheduler.LOG_DIR = logs_root
+                scheduler.STATE_FILE = state_dir / "state.json"
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with patch.object(
+                    scheduler,
+                    "load_sessions",
+                    return_value=(
+                        [session],
+                        scheduler.DiscoveryStats(
+                            indexed_rows=0,
+                            indexed_missing_files=0,
+                            file_only_recent_unprocessed=1,
+                            selected_indexed=0,
+                            selected_file_only=1,
+                            total_discovered=1,
+                            already_processed=0,
+                            selected_before_limit=1,
+                        ),
+                    ),
+                ), patch.object(
+                    scheduler,
+                    "discover_memory_targets",
+                    return_value={target.skill: target},
+                ), patch.object(
+                    scheduler,
+                    "classify_session",
+                    side_effect=AssertionError("inventory mode must not classify"),
+                ), redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = scheduler.process(
+                        argparse.Namespace(
+                            dry_run=True,
+                            inventory_json=True,
+                            progress_jsonl=False,
+                            lookback_days=90,
+                            max_sessions=5,
+                            verbose=False,
+                            codex_timeout=30,
+                            session_file=None,
+                            resolved_project_root=project_root,
+                            auto_promote=False,
+                        )
+                    )
+            finally:
+                scheduler.STATE_DIR = original_state_dir
+                scheduler.REPORT_DIR = original_report_dir
+                scheduler.LOG_DIR = original_log_dir
+                scheduler.STATE_FILE = original_state_file
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(payload["schemaVersion"], 1)
+            self.assertEqual(payload["sessions"]["selectedForReview"], 1)
+            self.assertEqual(payload["memoryTargets"][0]["capabilityId"], "project-knowledge-steward")
+            self.assertFalse(state_dir.exists())
+            self.assertFalse(reports_root.exists())
+            self.assertFalse(logs_root.exists())
+
+    def test_packaged_scheduler_progress_jsonl_reports_session_lifecycle(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = root / "OrgChart"
+            reports_root = root / "reports"
+            logs_root = root / "logs"
+            state_dir = root / "state-dir"
+            session_path = root / "session.jsonl"
+            memory_path = root / "long-term-memory.md"
+            reports_root.mkdir(parents=True, exist_ok=True)
+            logs_root.mkdir(parents=True, exist_ok=True)
+            state_dir.mkdir(parents=True, exist_ok=True)
+            project_root.mkdir(parents=True, exist_ok=True)
+            (project_root / ".governed").mkdir(parents=True, exist_ok=True)
+            memory_path.write_text("# Project Knowledge Steward\n\n## Working Agreement\n\n- durable note\n", encoding="utf-8")
+            session_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "session-1",
+                                    "timestamp": "2026-04-24T08:15:04.645Z",
+                                    "cwd": str(project_root),
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "Capture the reusable workflow for this OrgChart task.",
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            session = scheduler.SessionRef(
+                id="session-1",
+                thread_name="session.jsonl",
+                updated_at="2026-04-24T08:15:04.645Z",
+                path=session_path,
+                indexed=False,
+            )
+            target = scheduler.MemoryTarget(
+                skill="govkb-orgchart-project-knowledge-steward",
+                capability_id="project-knowledge-steward",
+                project_id="orgchart",
+                path=memory_path,
+                requires_explicit_acceptance=False,
+                headings=("Working Agreement",),
+                content=memory_path.read_text(encoding="utf-8"),
+                aliases=("$project-knowledge-steward",),
+                hints=("workflow",),
+                negative_hints=(),
+                project_root=project_root,
+            )
+
+            original_state_dir = scheduler.STATE_DIR
+            original_report_dir = scheduler.REPORT_DIR
+            original_log_dir = scheduler.LOG_DIR
+            original_state_file = scheduler.STATE_FILE
+            try:
+                scheduler.STATE_DIR = state_dir
+                scheduler.REPORT_DIR = reports_root
+                scheduler.LOG_DIR = logs_root
+                scheduler.STATE_FILE = state_dir / "state.json"
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with patch.object(
+                    scheduler,
+                    "load_sessions",
+                    return_value=(
+                        [session],
+                        scheduler.DiscoveryStats(
+                            indexed_rows=0,
+                            indexed_missing_files=0,
+                            file_only_recent_unprocessed=1,
+                            selected_indexed=0,
+                            selected_file_only=1,
+                            total_discovered=1,
+                            already_processed=0,
+                            selected_before_limit=1,
+                        ),
+                    ),
+                ), patch.object(
+                    scheduler,
+                    "discover_memory_targets",
+                    return_value={target.skill: target},
+                ), patch.object(
+                    scheduler,
+                    "classify_session",
+                    return_value={
+                        "session_id": "session-1",
+                        "candidates": [
+                            {
+                                "target_skill": target.skill,
+                                "memory_section": "Working Agreement",
+                                "lesson": "Use the OrgChart fixture workflow for repeatable validation.",
+                                "evidence": "Synthetic fixture identified a reusable workflow.",
+                                "confidence": 0.91,
+                                "durability": "high",
+                                "sensitivity": "clean",
+                                "bucket": "auto_apply",
+                            }
+                        ],
+                    },
+                ), patch.object(
+                    scheduler,
+                    "run_candidate_auto_create",
+                    return_value=(0, []),
+                ), redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = scheduler.process(
+                        argparse.Namespace(
+                            dry_run=True,
+                            inventory_json=False,
+                            progress_jsonl=True,
+                            lookback_days=90,
+                            max_sessions=5,
+                            verbose=False,
+                            codex_timeout=30,
+                            session_file=None,
+                            resolved_project_root=project_root,
+                            auto_promote=False,
+                        )
+                    )
+            finally:
+                scheduler.STATE_DIR = original_state_dir
+                scheduler.REPORT_DIR = original_report_dir
+                scheduler.LOG_DIR = original_log_dir
+                scheduler.STATE_FILE = original_state_file
+
+            self.assertEqual(exit_code, 0)
+            events = [json.loads(line) for line in stdout.getvalue().splitlines()]
+            event_names = [event["event"] for event in events]
+            self.assertEqual(event_names[0], "run_started")
+            self.assertIn("inventory", event_names)
+            self.assertIn("session_selected", event_names)
+            self.assertIn("session_classifying", event_names)
+            self.assertIn("session_classified", event_names)
+            self.assertIn("artifact_written", event_names)
+            self.assertEqual(event_names[-1], "run_finished")
+            classified = next(event for event in events if event["event"] == "session_classified")
+            self.assertEqual(classified["sessionId"], "session-1")
+            self.assertEqual(classified["appliedCount"], 1)
+            self.assertNotIn("reusable workflow for this OrgChart task", stdout.getvalue())
+            self.assertIn("Classifying session session-1", stderr.getvalue())
 
     def test_installed_scheduler_infers_codex_home_from_script_location(self) -> None:
         packaged_script = Path(next(iter(govkb.__path__))).resolve() / "adapters" / "codex" / "bin" / "codex-memory-review"
@@ -1628,6 +1897,7 @@ required_sections = ["Working Agreement"]
         def fake_run(cmd, **kwargs):
             captured["cmd"] = list(cmd)
             captured["env"] = dict(kwargs["env"])
+            captured["stdin"] = kwargs.get("stdin")
             return subprocess.CompletedProcess(
                 cmd,
                 0,
@@ -1657,6 +1927,7 @@ required_sections = ["Working Agreement"]
         self.assertIn("--cd", captured["cmd"])
         self.assertEqual(captured["cmd"][captured["cmd"].index("--cd") + 1], "/tmp/DemoProject")
         self.assertEqual(captured["env"]["CODEX_HOME"], "/tmp/classifier-codex-home")
+        self.assertEqual(captured["stdin"], scheduler.subprocess.DEVNULL)
         self.assertIn("-c", captured["cmd"])
         self.assertEqual(captured["cmd"][captured["cmd"].index("-c") + 1], 'model_reasoning_effort="low"')
 

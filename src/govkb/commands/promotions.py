@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 from typing import Any
@@ -11,6 +12,7 @@ from typing import Any
 from govkb.core.contracts import load_project_bundle
 from govkb.core.ids import normalize_identifier
 from govkb.core.install_state import default_codex_home
+from govkb.core.promotion_lifecycle import applied_promotion_metadata
 from govkb.core.promotion_lifecycle import archived_promotion_metadata
 from govkb.core.promotion_lifecycle import initial_promotion_metadata
 from govkb.core.promotion_lifecycle import promotion_metadata_path
@@ -46,8 +48,21 @@ def _git_output(cwd: Path, args: list[str]) -> str | None:
     return proc.stdout.strip()
 
 
+def _git_status_output(cwd: Path, args: list[str]) -> str | None:
+    proc = subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        return None
+    return proc.stdout.rstrip("\n")
+
+
 def _git_status(worktree_root: Path) -> list[str]:
-    output = _git_output(worktree_root, ["status", "--short", "--", ".governed"])
+    output = _git_status_output(worktree_root, ["status", "--short", "--", ".governed"])
     if output is None:
         return ["git status unavailable"]
     return [line for line in output.splitlines() if line.strip()]
@@ -74,6 +89,7 @@ def _promotion_summary(worktree_root: Path, *, project_id: str, project_root: Pa
         "metadataPath": str(metadata_path),
         "review": metadata.get("review") if metadata else None,
         "archive": metadata.get("archive") if metadata else None,
+        "apply": metadata.get("apply") if metadata else None,
     }
 
 
@@ -171,6 +187,8 @@ def run_promotions(args) -> int:
         return _run_show(args)
     if action == "mark-reviewed":
         return _run_mark_reviewed(args)
+    if action == "apply":
+        return _run_apply(args)
     if action == "archive":
         return _run_archive(args)
     print(f"error: unsupported promotions action: {action}", file=sys.stderr)
@@ -225,6 +243,11 @@ def _run_show(args) -> int:
         print(f"Archived at: {archive.get('archivedAt', '<unknown>')}")
         if archive.get("reason"):
             print(f"Archive reason: {archive['reason']}")
+    apply = promotion.get("apply")
+    if isinstance(apply, dict):
+        print(f"Applied at: {apply.get('appliedAt', '<unknown>')}")
+        if apply.get("projectRoot"):
+            print(f"Applied project: {apply['projectRoot']}")
     if promotion.get("digestPath"):
         print(f"Digest: {promotion['digestPath']}")
     if promotion["status"]:
@@ -255,6 +278,179 @@ def _metadata_from_promotion(payload: dict[str, Any], promotion: dict[str, Any])
         digest_path=digest_path,
         report_path=report_path,
     )
+
+
+def _git_root(cwd: Path) -> Path | None:
+    output = _git_output(cwd, ["rev-parse", "--show-toplevel"])
+    return Path(output).resolve() if output else None
+
+
+def _git_head(cwd: Path) -> str | None:
+    return _git_output(cwd, ["rev-parse", "--verify", "HEAD"])
+
+
+def _governed_status(project_root: Path) -> list[str] | None:
+    output = _git_status_output(project_root, ["status", "--porcelain", "--", ".governed"])
+    if output is None:
+        return None
+    return [line for line in output.splitlines() if line.strip()]
+
+
+def _status_paths(status: list[str]) -> set[str]:
+    paths: set[str] = set()
+    for line in status:
+        raw_path = line[3:].strip()
+        if " -> " in raw_path:
+            raw_path = raw_path.rsplit(" -> ", 1)[1]
+        paths.add(raw_path.rstrip("/"))
+    return paths
+
+
+def _paths_overlap(left: str, right: str) -> bool:
+    left = left.rstrip("/")
+    right = right.rstrip("/")
+    return left == right or left.startswith(f"{right}/") or right.startswith(f"{left}/")
+
+
+def _promotion_project_root(active_project_root: Path, promotion: dict[str, Any]) -> Path:
+    worktree_root = Path(str(promotion["worktreeRoot"])).resolve()
+    active_git_root = _git_root(active_project_root)
+    if active_git_root is not None:
+        try:
+            relative_project_root = active_project_root.resolve().relative_to(active_git_root)
+        except ValueError:
+            relative_project_root = Path()
+        candidate = worktree_root / relative_project_root
+        if (candidate / ".governed").exists():
+            return candidate
+    if (worktree_root / ".governed").exists():
+        return worktree_root
+    return worktree_root
+
+
+def _changed_governed_files(project_root: Path) -> tuple[list[Path], list[str]]:
+    status = _governed_status(project_root)
+    if status is None:
+        return [], ["git status unavailable for promotion worktree"]
+    files: list[Path] = []
+    errors: list[str] = []
+    seen: set[str] = set()
+    for line in status:
+        code = line[:2]
+        raw_path = line[3:].strip()
+        if " -> " in raw_path:
+            raw_path = raw_path.rsplit(" -> ", 1)[1]
+        if not raw_path.startswith(".governed/") and raw_path != ".governed":
+            errors.append(f"unsupported non-governed promotion path: {raw_path}")
+            continue
+        if "D" in code:
+            errors.append(f"delete changes are not supported by apply: {raw_path}")
+            continue
+
+        source = project_root / raw_path
+        candidates: list[Path]
+        if source.is_dir():
+            candidates = sorted(path.relative_to(project_root) for path in source.rglob("*") if path.is_file())
+        elif source.is_file():
+            candidates = [source.relative_to(project_root)]
+        else:
+            errors.append(f"changed path is missing in promotion worktree: {raw_path}")
+            continue
+        for candidate in candidates:
+            key = candidate.as_posix()
+            if key not in seen:
+                files.append(candidate)
+                seen.add(key)
+    return sorted(files, key=lambda path: path.as_posix()), errors
+
+
+def build_promotion_apply_payload(
+    project_root: Path,
+    target: str,
+    codex_home: Path | None = None,
+    *,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Apply an accepted isolated promotion into the active project without committing it."""
+    detail = build_promotion_detail_payload(project_root, target, codex_home)
+    promotion = detail["promotion"]
+    base: dict[str, Any] = {
+        "schemaVersion": 1,
+        "projectRoot": detail["projectRoot"],
+        "codexHome": detail["codexHome"],
+        "projectId": detail["projectId"],
+        "promotion": promotion,
+        "appliedFiles": [],
+        "activeStatusBefore": [],
+        "activeStatusAfter": [],
+        "error": detail["error"],
+    }
+    if promotion is None:
+        return base
+
+    state = str(promotion.get("state") or "")
+    if state != "accepted" and not force:
+        base["error"] = f"promotion must be accepted before apply; current state is {state or '<unknown>'}"
+        return base
+
+    active_project_root = Path(str(detail["projectRoot"])).resolve()
+    promotion_project_root = _promotion_project_root(active_project_root, promotion)
+    active_status_before = _governed_status(active_project_root)
+    if active_status_before is None:
+        base["error"] = "active project git status is unavailable"
+        return base
+    base["activeStatusBefore"] = active_status_before
+
+    active_git_root = _git_root(active_project_root)
+    promotion_git_root = _git_root(promotion_project_root)
+    active_head = _git_head(active_project_root) if active_git_root is not None else None
+    promotion_head = _git_head(promotion_project_root) if promotion_git_root is not None else None
+    if active_head and promotion_head and active_head != promotion_head and not force:
+        base["error"] = "promotion worktree HEAD does not match the active project HEAD; use --force to apply anyway"
+        return base
+
+    changed_files, errors = _changed_governed_files(promotion_project_root)
+    if errors:
+        base["error"] = "; ".join(errors)
+        return base
+    if not changed_files:
+        base["error"] = "promotion has no .governed file changes to apply"
+        return base
+    if active_status_before and not force:
+        active_paths = _status_paths(active_status_before)
+        changed_paths = {path.as_posix() for path in changed_files}
+        overlaps = sorted(
+            active_path
+            for active_path in active_paths
+            if any(_paths_overlap(active_path, changed_path) for changed_path in changed_paths)
+        )
+        if overlaps:
+            base["error"] = (
+                "active project .governed has overlapping uncommitted changes; "
+                f"use --force to apply anyway: {', '.join(overlaps)}"
+            )
+            return base
+
+    applied_files: list[str] = []
+    for relative_path in changed_files:
+        source = promotion_project_root / relative_path
+        destination = active_project_root / relative_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+        applied_files.append(relative_path.as_posix())
+
+    metadata_path = Path(str(promotion["metadataPath"]))
+    existing = read_promotion_metadata(metadata_path) or _metadata_from_promotion(detail, promotion)
+    write_promotion_metadata(
+        metadata_path,
+        applied_promotion_metadata(existing, project_root=active_project_root, files=applied_files),
+    )
+    result = build_promotion_detail_payload(active_project_root, str(promotion["runId"]), Path(str(detail["codexHome"])))
+    base["promotion"] = result["promotion"]
+    base["appliedFiles"] = applied_files
+    base["activeStatusAfter"] = _governed_status(active_project_root) or []
+    base["error"] = None
+    return base
 
 
 def _write_review_state(args, *, state: str) -> int:
@@ -292,6 +488,33 @@ def _run_mark_reviewed(args) -> int:
         print(f"error: unsupported decision: {decision}", file=sys.stderr)
         return 1
     return _write_review_state(args, state=decision)
+
+
+def _run_apply(args) -> int:
+    result = build_promotion_apply_payload(
+        Path(args.project_root),
+        args.promotion,
+        getattr(args, "codex_home", None),
+        force=getattr(args, "force", False),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 1 if result["error"] else 0
+    if result["error"]:
+        print(f"error: {result['error']}", file=sys.stderr)
+        return 1
+    promotion = result["promotion"] or {}
+    print(f"Applied promotion {promotion.get('runId', args.promotion)} into {result['projectRoot']}.")
+    print("Git history unchanged; review and commit the active project changes through the normal project flow.")
+    if result["appliedFiles"]:
+        print("Applied files:")
+        for path in result["appliedFiles"]:
+            print(f"  {path}")
+    if result["activeStatusAfter"]:
+        print("Active project git status:")
+        for line in result["activeStatusAfter"]:
+            print(f"  {line}")
+    return 0
 
 
 def _run_archive(args) -> int:

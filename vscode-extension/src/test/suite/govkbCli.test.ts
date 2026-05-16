@@ -4,16 +4,22 @@ import {
   applyCodexCommand,
   buildGovkbCommand,
   candidatesJsonCommand,
+  convertSkillCommand,
   initKbCommand,
   installCommand,
+  mergeCapabilitiesCommand,
   promoteAutoCommand,
+  promotionApplyCommand,
   promotionArchiveCommand,
   promotionMarkReviewedCommand,
   promotionShowCommand,
   promotionsListJsonCommand,
+  renameCapabilityCommand,
   reviewMemoryApplyCommand,
   reviewMemoryCommand,
   reviewMemoryDryRunCommand,
+  reviewMemoryInventoryCommand,
+  reviewMemoryProgressCommand,
   runCliCommand,
   statusJsonCommand,
   validateCommand
@@ -42,6 +48,37 @@ test("command builders preserve first-slice CLI contracts", () => {
   assert.deepEqual(statusJsonCommand(settings, "/repo").args, ["status", "/repo", "--codex-home", "/tmp/codex-home", "--json"]);
   assert.deepEqual(applyCodexCommand(settings, "/repo").args, ["apply", "codex", "--project-root", "/repo", "--codex-home", "/tmp/codex-home"]);
   assert.deepEqual(candidatesJsonCommand(settings, "/repo").args, ["candidates", "list", "/repo", "--json"]);
+  assert.deepEqual(convertSkillCommand(settings, "/repo", "release-helper", "release-helper", true).args, [
+    "convert",
+    "skill",
+    "release-helper",
+    "--project-root",
+    "/repo",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--capability-id",
+    "release-helper",
+    "--write",
+    "--json"
+  ]);
+  assert.deepEqual(renameCapabilityCommand(settings, "/repo", "old-skill", "new-skill").args, [
+    "capabilities",
+    "rename",
+    "old-skill",
+    "new-skill",
+    "--project-root",
+    "/repo",
+    "--json"
+  ]);
+  assert.deepEqual(mergeCapabilitiesCommand(settings, "/repo", "source-skill", "target-skill").args, [
+    "capabilities",
+    "merge",
+    "source-skill",
+    "target-skill",
+    "--project-root",
+    "/repo",
+    "--json"
+  ]);
 });
 
 test("promotion command builders preserve lifecycle CLI contracts", () => {
@@ -80,6 +117,16 @@ test("promotion command builders preserve lifecycle CLI contracts", () => {
     "/tmp/codex-home",
     "--json"
   ]);
+  assert.deepEqual(promotionApplyCommand(settings, "/repo", "run-1").args, [
+    "promotions",
+    "apply",
+    "run-1",
+    "--project-root",
+    "/repo",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--json"
+  ]);
   assert.deepEqual(promotionArchiveCommand(settings, "/repo", "run-1", "Done.").args, [
     "promotions",
     "archive",
@@ -103,8 +150,10 @@ test("memory review command is dry-run and passes bounded classifier defaults", 
     "--project-root",
     "/repo",
     "--dry-run",
+    "--lookback-days",
+    "90",
     "--max-sessions",
-    "1",
+    "5",
     "--codex-timeout",
     "180"
   ]);
@@ -118,8 +167,10 @@ test("memory review apply command omits dry-run flag", () => {
     "codex",
     "--project-root",
     "/repo",
+    "--lookback-days",
+    "90",
     "--max-sessions",
-    "1",
+    "5",
     "--codex-timeout",
     "180"
   ]);
@@ -147,8 +198,10 @@ test("memory review command includes configured classifier overrides", () => {
     "--project-root",
     "/repo",
     "--dry-run",
+    "--lookback-days",
+    "90",
     "--max-sessions",
-    "1",
+    "5",
     "--codex-model",
     "gpt-5.4-mini",
     "--codex-reasoning",
@@ -156,6 +209,28 @@ test("memory review command includes configured classifier overrides", () => {
     "--codex-timeout",
     "180"
   ]);
+});
+
+test("memory review inventory command uses read-only discovery flags", () => {
+  const command = reviewMemoryInventoryCommand(defaultSettings(), "/repo");
+  assert.deepEqual(command.args, [
+    "review-memory",
+    "--assistant",
+    "codex",
+    "--project-root",
+    "/repo",
+    "--inventory-json",
+    "--lookback-days",
+    "90",
+    "--max-sessions",
+    "5"
+  ]);
+});
+
+test("memory review progress command streams progress jsonl", () => {
+  const command = reviewMemoryProgressCommand(defaultSettings(), "/repo", true);
+  assert.equal(command.args.includes("--progress-jsonl"), true);
+  assert.equal(command.args.includes("--dry-run"), true);
 });
 
 test("memory review command uses configured Codex home as CODEX_HOME", () => {
@@ -181,4 +256,20 @@ test("runCliCommand streams stdout and stderr while collecting final output", as
   assert.equal(result.stderr, "err");
   assert.deepEqual(stdoutChunks, ["out"]);
   assert.deepEqual(stderrChunks, ["err"]);
+});
+
+test("runCliCommand closes child stdin so nested tools do not wait for input", async () => {
+  const result = await runCliCommand({
+    executable: process.execPath,
+    args: [
+      "-e",
+      [
+        "process.stdin.resume();",
+        "process.stdin.on('end', () => { process.stdout.write('stdin-closed'); process.exit(0); });",
+        "setTimeout(() => process.exit(7), 300);"
+      ].join("")
+    ]
+  });
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stdout, "stdin-closed");
 });

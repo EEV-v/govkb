@@ -232,6 +232,155 @@ class PromotionsCommandTests(unittest.TestCase):
             ).stdout
             self.assertEqual(active.strip(), "")
 
+    def test_apply_accepted_promotion_copies_changes_without_commit(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, lesson = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+
+            run_promotions(
+                argparse.Namespace(
+                    promotion_action="mark-reviewed",
+                    promotion=promotion["runId"],
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    decision="accepted",
+                    reason="Ready to apply.",
+                    reviewer=None,
+                    json=True,
+                )
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="apply",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        force=False,
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(output.getvalue())
+            self.assertEqual(payload["promotion"]["state"], "applied")
+            self.assertIn(".governed/capabilities/workflow-review/references/long-term-memory.md", payload["appliedFiles"])
+            self.assertTrue(payload["activeStatusAfter"])
+            active_memory = project_root / ".governed" / "capabilities" / "workflow-review" / "references" / "long-term-memory.md"
+            self.assertIn(lesson, active_memory.read_text(encoding="utf-8"))
+            active_status = subprocess.run(
+                ["git", "status", "--short", "--", ".governed"],
+                cwd=project_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            ).stdout
+            self.assertIn("long-term-memory.md", active_status)
+            self.assertNotIn("nothing to commit", active_status)
+
+    def test_apply_accepted_promotion_allows_non_overlapping_governed_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, lesson = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+            run_promotions(
+                argparse.Namespace(
+                    promotion_action="mark-reviewed",
+                    promotion=promotion["runId"],
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    decision="accepted",
+                    reason="Ready to apply.",
+                    reviewer=None,
+                    json=True,
+                )
+            )
+            candidate = project_root / ".governed" / "candidates" / "possible-workflow" / "candidate.toml"
+            candidate.parent.mkdir(parents=True)
+            candidate.write_text("id = \"possible-workflow\"\n", encoding="utf-8")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="apply",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        force=False,
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(output.getvalue())
+            self.assertEqual(payload["promotion"]["state"], "applied")
+            self.assertIn("?? .governed/candidates/", "\n".join(payload["activeStatusBefore"]))
+            active_memory = project_root / ".governed" / "capabilities" / "workflow-review" / "references" / "long-term-memory.md"
+            self.assertIn(lesson, active_memory.read_text(encoding="utf-8"))
+
+    def test_apply_accepted_promotion_blocks_overlapping_governed_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+            run_promotions(
+                argparse.Namespace(
+                    promotion_action="mark-reviewed",
+                    promotion=promotion["runId"],
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    decision="accepted",
+                    reason="Ready to apply.",
+                    reviewer=None,
+                    json=True,
+                )
+            )
+            active_memory = project_root / ".governed" / "capabilities" / "workflow-review" / "references" / "long-term-memory.md"
+            active_memory.write_text(
+                active_memory.read_text(encoding="utf-8").rstrip() + "\n- Local maintainer edit.\n",
+                encoding="utf-8",
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="apply",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        force=False,
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(exit_code, 1)
+            payload = json.loads(output.getvalue())
+            self.assertIn("overlapping uncommitted changes", payload["error"])
+
+    def test_apply_requires_accepted_promotion_by_default(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="apply",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        force=False,
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(exit_code, 1)
+            payload = json.loads(output.getvalue())
+            self.assertIn("must be accepted", payload["error"])
+
     def test_archive_records_lifecycle_without_removing_worktree(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)

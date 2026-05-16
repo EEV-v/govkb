@@ -19,7 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +51,8 @@ SKILLS_DIR = CODEX_HOME / "skills"
 INSTALL_STATE_DIR = CODEX_HOME / "memories" / "govkb" / "install-state"
 MIN_AUTO_CONFIDENCE = 0.85
 FILE_ONLY_BACKFILL_DAYS = 14
+MACHINE_STDOUT = False
+LOG_FILE_ENABLED = True
 
 
 USAGE_LIMIT_PATTERNS = [
@@ -174,6 +176,9 @@ class DiscoveryStats:
     file_only_recent_unprocessed: int
     selected_indexed: int
     selected_file_only: int
+    total_discovered: int = 0
+    already_processed: int = 0
+    selected_before_limit: int = 0
 
 
 @dataclass(frozen=True)
@@ -351,12 +356,13 @@ def govkb_subprocess_env(project_root: Path) -> dict[str, str]:
 
 
 def log(message: str) -> None:
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
     stamp = utc_now().strftime("%Y-%m-%dT%H:%M:%SZ")
     line = f"{stamp} {message}"
-    print(line)
-    with (LOG_DIR / f"{utc_now().date()}.log").open("a", encoding="utf-8") as fh:
-        fh.write(line + "\n")
+    print(line, file=sys.stderr if MACHINE_STDOUT else sys.stdout)
+    if LOG_FILE_ENABLED:
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
+        with (LOG_DIR / f"{utc_now().date()}.log").open("a", encoding="utf-8") as fh:
+            fh.write(line + "\n")
 
 
 def acquire_lock() -> Any:
@@ -377,6 +383,9 @@ def load_state() -> dict[str, Any]:
     try:
         return json.loads(STATE_FILE.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
+        if not LOG_FILE_ENABLED:
+            log(f"State file was invalid JSON; ignoring in read-only mode: {STATE_FILE}")
+            return {"processed_sessions": {}}
         backup = STATE_FILE.with_suffix(f".broken-{utc_now().strftime('%Y%m%d%H%M%S')}.json")
         shutil.copy2(STATE_FILE, backup)
         log(f"State file was invalid JSON; copied to {backup}")
@@ -509,6 +518,9 @@ def load_sessions(args: argparse.Namespace, state: dict[str, Any]) -> tuple[list
                 file_only_recent_unprocessed=0,
                 selected_indexed=0,
                 selected_file_only=1,
+                total_discovered=1,
+                already_processed=0,
+                selected_before_limit=1,
             ),
         )
 
@@ -568,10 +580,21 @@ def load_sessions(args: argparse.Namespace, state: dict[str, Any]) -> tuple[list
             indexed=True,
         )
 
+    scoped_project_root = getattr(args, "resolved_project_root", None)
+    if scoped_project_root is not None:
+        scoped_project_root = scoped_project_root.expanduser().resolve()
+        sessions = {
+            sid: session
+            for sid, session in sessions.items()
+            if same_project_root(session_project_root(session), scoped_project_root)
+        }
+
     selected: list[SessionRef] = []
     file_only_recent_unprocessed = 0
+    already_processed = 0
     for session in sessions.values():
         if is_already_processed(processed, session.id, session.updated_at):
+            already_processed += 1
             continue
         updated_dt = parse_time(session.updated_at)
         if session.indexed:
@@ -583,6 +606,7 @@ def load_sessions(args: argparse.Namespace, state: dict[str, Any]) -> tuple[list
                 selected.append(session)
 
     selected.sort(key=lambda item: parse_time(item.updated_at), reverse=True)
+    selected_before_limit = len(selected)
     if args.max_sessions is not None:
         selected = selected[: args.max_sessions]
     stats = DiscoveryStats(
@@ -591,6 +615,9 @@ def load_sessions(args: argparse.Namespace, state: dict[str, Any]) -> tuple[list
         file_only_recent_unprocessed=file_only_recent_unprocessed,
         selected_indexed=sum(1 for session in selected if session.indexed),
         selected_file_only=sum(1 for session in selected if not session.indexed),
+        total_discovered=len(sessions),
+        already_processed=already_processed,
+        selected_before_limit=selected_before_limit,
     )
     return selected, stats
 
@@ -1342,7 +1369,14 @@ def classify_session(
         if codex_parent and codex_parent != ".":
             env["PATH"] = f"{codex_parent}:{env.get('PATH', '')}"
         try:
-            proc = subprocess.run(cmd, text=True, capture_output=True, timeout=timeout, env=env)
+            proc = subprocess.run(
+                cmd,
+                text=True,
+                capture_output=True,
+                timeout=timeout,
+                env=env,
+                stdin=subprocess.DEVNULL,
+            )
         except subprocess.TimeoutExpired as exc:
             details = [
                 f"codex classifier timed out after {timeout} seconds for session {session.id}",
@@ -1517,7 +1551,7 @@ def write_report(
     failed: list[dict[str, str]],
     dry_run: bool,
     classifier_config: dict[str, str | int | None] | None = None,
-) -> None:
+) -> Path:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORT_DIR / f"{run_id}-report.md"
     run_date = run_id[:10]
@@ -1539,6 +1573,9 @@ def write_report(
         f"- Failed sessions: {len(failed)}",
         "",
         "## Discovery Health",
+        f"- Total sessions discovered: {discovery.total_discovered}",
+        f"- Already processed sessions: {discovery.already_processed}",
+        f"- Selected before max-session limit: {discovery.selected_before_limit}",
         f"- Indexed rows seen: {discovery.indexed_rows}",
         f"- Indexed rows missing session file: {discovery.indexed_missing_files}",
         f"- File-only recent unprocessed sessions detected: {discovery.file_only_recent_unprocessed}",
@@ -1623,14 +1660,91 @@ def write_report(
 
     report_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
     log(f"Wrote report {report_path}")
+    return report_path
 
 
-def write_patch(run_id: str, name: str, diffs: list[str]) -> None:
+def write_patch(run_id: str, name: str, diffs: list[str]) -> Path:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORT_DIR / f"{run_id}-{name}.patch"
     text = "\n".join(diff for diff in diffs if diff).strip()
     path.write_text((text + "\n") if text else "", encoding="utf-8")
     log(f"Wrote patch {path}")
+    return path
+
+
+def memory_target_payload(target: MemoryTarget) -> dict[str, Any]:
+    return {
+        "skillId": target.skill,
+        "capabilityId": target.capability_id,
+        "projectId": target.project_id,
+        "requiresExplicitAcceptance": target.requires_explicit_acceptance,
+        "memoryPath": str(target.path),
+        "sections": list(target.headings),
+    }
+
+
+def build_inventory_payload(
+    args: argparse.Namespace,
+    sessions: list[SessionRef],
+    discovery: DiscoveryStats,
+    targets: dict[str, MemoryTarget],
+    scoped_project_root: Path | None,
+) -> dict[str, Any]:
+    lookback_days = getattr(args, "lookback_days", None)
+    max_sessions = getattr(args, "max_sessions", None)
+    selected_for_review = len(sessions)
+    recommended_lookback = int(lookback_days) if lookback_days is not None else 90
+    recommended_max = max_sessions if max_sessions is not None else min(5, max(selected_for_review, 1))
+    if discovery.selected_before_limit > selected_for_review:
+        reason = "More sessions are available than this batch will review; continue with bounded batches."
+    elif selected_for_review:
+        reason = "Review the selected recent sessions before expanding scope."
+    else:
+        reason = "No unprocessed sessions matched the current scope; increase lookback or wait for new sessions."
+    return {
+        "schemaVersion": 1,
+        "projectRoot": str(scoped_project_root) if scoped_project_root is not None else "",
+        "codexHome": str(CODEX_HOME),
+        "lookbackDays": lookback_days,
+        "maxSessions": max_sessions,
+        "sessions": {
+            "totalDiscovered": discovery.total_discovered,
+            "selectedForReview": selected_for_review,
+            "selectedBeforeLimit": discovery.selected_before_limit,
+            "selectedIndexed": discovery.selected_indexed,
+            "selectedFileOnly": discovery.selected_file_only,
+            "alreadyProcessed": discovery.already_processed,
+            "indexedRows": discovery.indexed_rows,
+            "indexedMissingFiles": discovery.indexed_missing_files,
+            "fileOnlyRecentUnprocessed": discovery.file_only_recent_unprocessed,
+        },
+        "selectedSessions": [
+            {
+                "sessionId": session.id,
+                "threadName": session.thread_name,
+                "updatedAt": session.updated_at,
+                "indexed": session.indexed,
+            }
+            for session in sessions
+        ],
+        "memoryTargets": [memory_target_payload(target) for target in sorted(targets.values(), key=lambda item: item.skill)],
+        "recommendedBatch": {
+            "lookbackDays": recommended_lookback,
+            "maxSessions": recommended_max,
+            "dryRun": True,
+            "reason": reason,
+        },
+    }
+
+
+def emit_json(payload: dict[str, Any]) -> None:
+    print(json.dumps(payload, sort_keys=True), flush=True)
+
+
+def emit_progress(args: argparse.Namespace, event: str, **payload: Any) -> None:
+    if not getattr(args, "progress_jsonl", False):
+        return
+    emit_json({"event": event, **payload})
 
 
 def run_auto_promote(project_roots: set[Path]) -> int:
@@ -1761,9 +1875,13 @@ def run_candidate_auto_create(project_roots: set[Path]) -> tuple[int, list[dict[
 
 
 def process(args: argparse.Namespace) -> int:
-    STATE_DIR.mkdir(parents=True, exist_ok=True)
-    REPORT_DIR.mkdir(parents=True, exist_ok=True)
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    global MACHINE_STDOUT, LOG_FILE_ENABLED
+    MACHINE_STDOUT = bool(getattr(args, "inventory_json", False) or getattr(args, "progress_jsonl", False))
+    LOG_FILE_ENABLED = not bool(getattr(args, "inventory_json", False))
+    if not getattr(args, "inventory_json", False):
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     state = load_state()
     sessions, discovery = load_sessions(args, state)
@@ -1771,16 +1889,30 @@ def process(args: argparse.Namespace) -> int:
     if scoped_project_root is not None:
         scoped_project_root = scoped_project_root.expanduser().resolve()
         sessions = [session for session in sessions if same_project_root(session_project_root(session), scoped_project_root)]
-        discovery = DiscoveryStats(
-            indexed_rows=discovery.indexed_rows,
-            indexed_missing_files=discovery.indexed_missing_files,
-            file_only_recent_unprocessed=discovery.file_only_recent_unprocessed,
+        discovery = replace(
+            discovery,
             selected_indexed=sum(1 for session in sessions if session.indexed),
             selected_file_only=sum(1 for session in sessions if not session.indexed),
         )
     targets = discover_memory_targets()
-    if not targets:
+    if not targets and not getattr(args, "inventory_json", False):
         raise SystemExit(f"No skill memory targets found under {SKILLS_DIR}")
+
+    inventory_payload = build_inventory_payload(args, sessions, discovery, targets, scoped_project_root)
+    if getattr(args, "inventory_json", False):
+        emit_json(inventory_payload)
+        return 0
+
+    run_id = utc_now().strftime("%Y-%m-%dT%H%M%SZ")
+    emit_progress(
+        args,
+        "run_started",
+        runId=run_id,
+        dryRun=bool(args.dry_run),
+        lookbackDays=getattr(args, "lookback_days", None),
+        maxSessions=getattr(args, "max_sessions", None),
+    )
+    emit_progress(args, "inventory", runId=run_id, **inventory_payload)
 
     log(
         f"Selected {len(sessions)} session(s); discovered {len(targets)} memory target(s); "
@@ -1807,6 +1939,16 @@ def process(args: argparse.Namespace) -> int:
     candidate_auto_create_results: list[dict[str, Any]] = []
 
     for session in sessions:
+        emit_progress(
+            args,
+            "session_selected",
+            runId=run_id,
+            sessionId=session.id,
+            threadName=session.thread_name,
+            updatedAt=session.updated_at,
+            indexed=session.indexed,
+            status="queued",
+        )
         if retryable_classifier_outage is not None:
             deferred.append(
                 {
@@ -1815,12 +1957,28 @@ def process(args: argparse.Namespace) -> int:
                 }
             )
             log(f"Deferred session {session.id}: {retryable_classifier_outage}")
+            emit_progress(
+                args,
+                "session_deferred",
+                runId=run_id,
+                sessionId=session.id,
+                status="deferred",
+                reason=retryable_classifier_outage,
+            )
             continue
         try:
             project_root = session_project_root(session)
             if project_root is not None:
                 candidate_auto_create_project_roots.add(project_root)
             session_targets = targets_for_session(session, targets)
+            emit_progress(
+                args,
+                "session_prescreening",
+                runId=run_id,
+                sessionId=session.id,
+                status="prescreening",
+                targetSkills=sorted(session_targets),
+            )
             signals = collect_session_signals(session, session_targets)
             should_classify, prescreen_reason = prescreen_session(session, signals)
             if not should_classify:
@@ -1835,6 +1993,16 @@ def process(args: argparse.Namespace) -> int:
                 )
                 processed_successfully.append(session)
                 log(f"Skipped session {session.id}: {prescreen_reason}")
+                emit_progress(
+                    args,
+                    "session_skipped",
+                    runId=run_id,
+                    sessionId=session.id,
+                    threadName=session.thread_name,
+                    status="skipped",
+                    reason=prescreen_reason,
+                    likelySkills=dedupe_keep_order(list(signals.explicit_skills) + list(signals.hinted_skills)),
+                )
                 continue
 
             prompt_targets = prompt_targets_for_session(session_targets, signals)
@@ -1848,6 +2016,18 @@ def process(args: argparse.Namespace) -> int:
                 f"Classifying session {session.id} with {len(prompt_targets)} prompt target(s): "
                 f"{', '.join(prompt_targets)}"
             )
+            emit_progress(
+                args,
+                "session_classifying",
+                runId=run_id,
+                sessionId=session.id,
+                status="classifying",
+                targetSkills=list(prompt_targets),
+            )
+            applied_before = len(applied)
+            staged_before = len(staged)
+            rejected_before = len(rejected)
+            candidate_stage_before = len(candidate_stage_requests)
             result = classify_session(
                 session,
                 prompt_targets,
@@ -1908,25 +2088,43 @@ def process(args: argparse.Namespace) -> int:
                         "semantic_seed": semantic_seed,
                     }
             processed_successfully.append(session)
+            emit_progress(
+                args,
+                "session_classified",
+                runId=run_id,
+                sessionId=session.id,
+                status="classified",
+                targetSkills=list(prompt_targets),
+                lessonCount=len(candidates),
+                appliedCount=len(applied) - applied_before,
+                stagedCount=len(staged) - staged_before,
+                rejectedCount=len(rejected) - rejected_before,
+                candidateCount=len(candidate_stage_requests) - candidate_stage_before,
+            )
         except UsageLimitClassificationError as exc:
             deferred.append({"session_id": session.id, "error": str(exc)})
             retryable_classifier_outage = "classification deferred because an earlier session exhausted the nested Codex usage limit"
             log(f"Deferred session {session.id}: {exc}")
+            emit_progress(args, "session_deferred", runId=run_id, sessionId=session.id, status="deferred", reason=str(exc))
         except ConnectivityClassificationError as exc:
             deferred.append({"session_id": session.id, "error": str(exc)})
             retryable_classifier_outage = "classification deferred because an earlier session hit a transient Codex transport failure"
             log(f"Deferred session {session.id}: {exc}")
+            emit_progress(args, "session_deferred", runId=run_id, sessionId=session.id, status="deferred", reason=str(exc))
         except ClassifierEnvironmentError as exc:
             deferred.append({"session_id": session.id, "error": str(exc)})
             retryable_classifier_outage = "classification deferred because the shell execution environment blocks nested Codex classification"
             log(f"Deferred session {session.id}: {exc}")
+            emit_progress(args, "session_deferred", runId=run_id, sessionId=session.id, status="deferred", reason=str(exc))
         except TimeoutClassificationError as exc:
             deferred.append({"session_id": session.id, "error": str(exc)})
             retryable_classifier_outage = "classification deferred because an earlier session hit the nested Codex timeout"
             log(f"Deferred session {session.id}: {exc}")
+            emit_progress(args, "session_deferred", runId=run_id, sessionId=session.id, status="deferred", reason=str(exc))
         except Exception as exc:  # noqa: BLE001 - per-session failure must be reported, not hide the run.
             failed.append({"session_id": session.id, "error": str(exc)})
             log(f"Failed session {session.id}: {exc}")
+            emit_progress(args, "session_failed", runId=run_id, sessionId=session.id, status="failed", reason=str(exc))
 
     after_staged = dict(after_auto)
     for candidate in staged:
@@ -1943,12 +2141,12 @@ def process(args: argparse.Namespace) -> int:
 
     applied_diffs = [unified_diff(path, original_content[path], after_auto[path]) for path in original_content]
     staged_diffs = [unified_diff(path, after_auto[path], after_staged[path]) for path in original_content]
-    run_id = utc_now().strftime("%Y-%m-%dT%H%M%SZ")
-
-    write_patch(run_id, "applied", applied_diffs)
-    write_patch(run_id, "staged", staged_diffs)
+    applied_patch = write_patch(run_id, "applied", applied_diffs)
+    emit_progress(args, "artifact_written", runId=run_id, kind="appliedPatch", path=str(applied_patch))
+    staged_patch = write_patch(run_id, "staged", staged_diffs)
+    emit_progress(args, "artifact_written", runId=run_id, kind="stagedPatch", path=str(staged_patch))
     candidate_stage_rows = list(candidate_stage_requests.values())
-    write_report(
+    report_path = write_report(
         run_id,
         discovery,
         sessions,
@@ -1968,6 +2166,23 @@ def process(args: argparse.Namespace) -> int:
             "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
         },
     )
+    emit_progress(args, "artifact_written", runId=run_id, kind="report", path=str(report_path))
+    def emit_finished(status: str) -> None:
+        emit_progress(
+            args,
+            "run_finished",
+            runId=run_id,
+            status=status,
+            reviewed=len(processed_successfully),
+            skipped=len(skipped),
+            deferred=len(deferred),
+            failed=len(failed),
+            applied=len(applied),
+            staged=len(staged),
+            rejected=len(rejected),
+            existingSkillUpdates=len(applied) + len(staged),
+            stagedCandidates=len(candidate_stage_rows),
+        )
 
     if not args.dry_run:
         for path, content in after_auto.items():
@@ -1977,10 +2192,11 @@ def process(args: argparse.Namespace) -> int:
 
         candidate_stage_failures = run_candidate_staging(candidate_stage_rows) if candidate_stage_rows else 0
         if candidate_stage_failures:
+            emit_finished("failed")
             return 1
         if candidate_auto_create_project_roots:
             auto_create_failures, candidate_auto_create_results = run_candidate_auto_create(candidate_auto_create_project_roots)
-            write_report(
+            report_path = write_report(
                 run_id,
                 discovery,
                 sessions,
@@ -2000,7 +2216,9 @@ def process(args: argparse.Namespace) -> int:
                     "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
                 },
             )
+            emit_progress(args, "artifact_written", runId=run_id, kind="report", path=str(report_path))
             if auto_create_failures:
+                emit_finished("failed")
                 return 1
 
         if not failed and not deferred:
@@ -2019,10 +2237,12 @@ def process(args: argparse.Namespace) -> int:
             if getattr(args, "auto_promote", True) and auto_promote_project_roots:
                 promote_failures = run_auto_promote(auto_promote_project_roots)
                 if promote_failures:
+                    emit_finished("failed")
                     return 1
         else:
             log("Skipped state advancement because one or more sessions were deferred or failed")
 
+    emit_finished("failed" if failed else "completed")
     return 1 if failed else 0
 
 
@@ -2030,6 +2250,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Review recent Codex sessions for skill memory updates.")
     parser.add_argument("--dry-run", action="store_true", help="Generate reports and patches without editing memory.")
     parser.add_argument("--once", action="store_true", help="Run once; accepted for cron readability.")
+    parser.add_argument("--inventory-json", action="store_true", help="Emit session inventory JSON and exit without classification.")
+    parser.add_argument("--progress-jsonl", action="store_true", help="Emit structured progress events as JSONL on stdout.")
     parser.add_argument("--lookback-days", type=float, default=None, help="Override incremental selection window.")
     parser.add_argument("--max-sessions", type=int, default=20, help="Maximum sessions to classify in one run.")
     parser.add_argument("--verbose", action="store_true", help="Write sanitized classifier inputs to the log dir.")

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 import io
+import json
 import tempfile
 from pathlib import Path
 import unittest
@@ -134,6 +135,160 @@ class SkillConversionTests(unittest.TestCase):
 
             self.assertEqual(plan.source_path, outside_home.resolve())
             self.assertEqual(plan.capability_id, "release-helper")
+
+    def test_direct_skill_markdown_path_resolves_to_skill_folder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = _seed_project(root)
+            codex_home = root / "codex-home"
+            skill_root = _seed_skill(codex_home)
+
+            plan = build_conversion_plan(str(skill_root / "SKILL.md"), project_root=project_root, codex_home=codex_home)
+
+            self.assertEqual(plan.source_path, skill_root.resolve())
+            self.assertEqual(plan.capability_id, "release-helper")
+
+    def test_json_write_failure_removes_non_strict_package(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = _seed_project(root)
+            codex_home = root / "codex-home"
+            skill_root = _seed_skill(codex_home)
+            skill_file = skill_root / "SKILL.md"
+            skill_file.write_text(
+                skill_file.read_text(encoding="utf-8") + "\nUse `missing-release-check.md` before release.\n",
+                encoding="utf-8",
+            )
+
+            exit_code, stdout, stderr = _run_convert(
+                argparse.Namespace(
+                    convert_action="skill",
+                    skill="release-helper",
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    capability_id=None,
+                    write=True,
+                    json=True,
+                )
+            )
+
+            payload = json.loads(stdout)
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(stderr, "")
+            self.assertEqual(payload["strictStatus"], "failed")
+            self.assertEqual(payload["packageRemoved"], True)
+            self.assertFalse((project_root / ".governed" / "capabilities" / "release-helper").exists())
+
+    def test_conversion_repairs_moved_skill_paths_and_repo_sources(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = _seed_project(root)
+            grades_root = project_root / "clearing-docs" / "GRADES"
+            grades_root.mkdir(parents=True, exist_ok=True)
+            backend_matrix = grades_root / "backend-grading-matrix-full.md"
+            qa_matrix = grades_root / "qa-grading-matrix-middle.md"
+            backend_matrix.write_text("# Backend Matrix\n", encoding="utf-8")
+            qa_matrix.write_text("# QA Matrix\n", encoding="utf-8")
+
+            codex_home = root / "codex-home"
+            skill_root = _seed_skill(codex_home, name="comparative-grade-screening")
+            (skill_root / "SKILL.md").write_text(
+                f"""---
+name: comparative-grade-screening
+description: Comparative grade screening.
+---
+
+# Comparative Grade Screening
+
+Prefer `references/matrix-sources.md` for source matrices.
+Default backend source is `backend-grading-matrix-full.md`.
+Default QA source is `qa-grading-matrix-middle.md`.
+Run `scripts/calc_screening_scores.py` for totals.
+Use `calc_screening_scores.py`, `add_lesson.py`, `matrix-sources.md`, `output-style.md`, and `lessons.md` from this skill.
+""",
+                encoding="utf-8",
+            )
+            (skill_root / "references" / "matrix-sources.md").write_text(
+                f"""# Matrix Sources
+
+- Backend: `{backend_matrix}`
+- QA: `{qa_matrix}`
+""",
+                encoding="utf-8",
+            )
+            (skill_root / "references" / "lessons.md").write_text("# Lessons\n", encoding="utf-8")
+            (skill_root / "references" / "output-style.md").write_text("# Output Style\n", encoding="utf-8")
+            (skill_root / "scripts" / "calc_screening_scores.py").write_text("print('score')\n", encoding="utf-8")
+            (skill_root / "scripts" / "add_lesson.py").write_text("print('lesson')\n", encoding="utf-8")
+
+            plan = build_conversion_plan(
+                "comparative-grade-screening",
+                project_root=project_root,
+                codex_home=codex_home,
+            )
+
+            self.assertEqual(plan.strict_status, "passed", [issue.as_dict() for issue in plan.strict_issues])
+            self.assertIn("tools/scripts/calc_screening_scores.py", plan.instructions_text)
+            self.assertIn("tools/scripts/add_lesson.py", plan.instructions_text)
+            self.assertIn("references/matrix-sources.md", plan.instructions_text)
+            self.assertIn("clearing-docs/GRADES/backend-grading-matrix-full.md", plan.instructions_text)
+            self.assertIn("clearing-docs/GRADES/qa-grading-matrix-middle.md", plan.instructions_text)
+
+            exit_code, stdout, stderr = _run_convert(
+                argparse.Namespace(
+                    convert_action="skill",
+                    skill="comparative-grade-screening",
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    capability_id=None,
+                    write=True,
+                    json=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0, stderr)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["strictStatus"], "passed")
+            package_root = project_root / ".governed" / "capabilities" / "comparative-grade-screening"
+            matrix_sources = (package_root / "references" / "matrix-sources.md").read_text(encoding="utf-8")
+            self.assertNotIn(str(project_root), matrix_sources)
+            self.assertIn("clearing-docs/GRADES/backend-grading-matrix-full.md", matrix_sources)
+
+    def test_generated_memory_uses_existing_project_entrypoint(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = _seed_project(root)
+            (project_root / "README.md").unlink()
+            (project_root / "AGENTS.md").write_text("# Agent Instructions\n", encoding="utf-8")
+            codex_home = root / "codex-home"
+            skill_root = _seed_skill(codex_home)
+            (skill_root / "references" / "long-term-memory.md").unlink()
+
+            exit_code, stdout, stderr = _run_convert(
+                argparse.Namespace(
+                    convert_action="skill",
+                    skill="release-helper",
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    capability_id=None,
+                    write=True,
+                    json=True,
+                )
+            )
+
+            self.assertEqual(exit_code, 0, stderr)
+            payload = json.loads(stdout)
+            self.assertEqual(payload["strictStatus"], "passed")
+            memory = (
+                project_root
+                / ".governed"
+                / "capabilities"
+                / "release-helper"
+                / "references"
+                / "long-term-memory.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("`AGENTS.md`", memory)
+            self.assertNotIn("`README.md`", memory)
 
     def test_write_creates_strict_valid_package_and_apply_materializes_it(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

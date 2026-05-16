@@ -9,6 +9,7 @@ export interface GovkbSettings {
   classifierModel?: string;
   classifierReasoning?: ReasoningEffort;
   reviewTimeoutSeconds?: number;
+  reviewLookbackDays: number;
   reviewMaxSessions: number;
   defaultDryRun: boolean;
   autoRefreshOnStartup: boolean;
@@ -50,6 +51,151 @@ export interface FlowResult {
   blocker?: Blocker;
   statusJson?: StatusPayload;
   promotionsJson?: PromotionsPayload;
+  learningInventory?: LearningInventoryPayload;
+  learningRun?: LearningRunState;
+  conversion?: ConversionPayload;
+}
+
+export interface ConversionIssue {
+  location: string;
+  message: string;
+  ruleId: string;
+  severity: string;
+}
+
+export interface ConversionPayload {
+  sourcePath: string;
+  sourceName: string;
+  capabilityId: string;
+  capabilityName: string;
+  packagePath: string;
+  parityLevel: string;
+  strictStatus: "passed" | "failed" | string;
+  strictIssues: ConversionIssue[];
+  createdPackage?: string;
+  packageRemoved?: boolean;
+}
+
+export interface LearningInventoryPayload {
+  schemaVersion: 1;
+  projectRoot: string;
+  codexHome: string;
+  lookbackDays: number | null;
+  maxSessions: number | null;
+  sessions: {
+    totalDiscovered: number;
+    selectedForReview: number;
+    selectedBeforeLimit: number;
+    selectedIndexed: number;
+    selectedFileOnly: number;
+    alreadyProcessed: number;
+    indexedRows: number;
+    indexedMissingFiles: number;
+    fileOnlyRecentUnprocessed: number;
+  };
+  selectedSessions: LearningSessionSummary[];
+  memoryTargets: LearningMemoryTarget[];
+  recommendedBatch: {
+    lookbackDays: number;
+    maxSessions: number;
+    dryRun: boolean;
+    reason: string;
+  };
+}
+
+export interface LearningSessionSummary {
+  sessionId: string;
+  threadName: string;
+  updatedAt: string;
+  indexed: boolean;
+}
+
+export interface LearningMemoryTarget {
+  skillId: string;
+  capabilityId: string;
+  projectId: string | null;
+  requiresExplicitAcceptance: boolean;
+  memoryPath: string;
+  sections: string[];
+}
+
+export type LearningProgressEventName =
+  | "run_started"
+  | "inventory"
+  | "session_selected"
+  | "session_prescreening"
+  | "session_skipped"
+  | "session_classifying"
+  | "session_classified"
+  | "session_deferred"
+  | "session_failed"
+  | "artifact_written"
+  | "run_finished";
+
+export interface LearningProgressEvent {
+  event: LearningProgressEventName;
+  runId?: string;
+  sessionId?: string;
+  threadName?: string;
+  updatedAt?: string;
+  status?: string;
+  reason?: string;
+  targetSkills?: string[];
+  lessonCount?: number;
+  appliedCount?: number;
+  stagedCount?: number;
+  rejectedCount?: number;
+  candidateCount?: number;
+  kind?: string;
+  path?: string;
+  reviewed?: number;
+  skipped?: number;
+  deferred?: number;
+  failed?: number;
+  applied?: number;
+  staged?: number;
+  rejected?: number;
+  existingSkillUpdates?: number;
+  stagedCandidates?: number;
+  [key: string]: unknown;
+}
+
+export interface LearningSessionProgress {
+  sessionId: string;
+  threadName?: string;
+  updatedAt?: string;
+  status: string;
+  reason?: string;
+  targetSkills: string[];
+  lessonCount: number;
+  appliedCount: number;
+  stagedCount: number;
+  rejectedCount: number;
+  candidateCount: number;
+}
+
+export interface LearningRunSummary {
+  reviewed: number;
+  skipped: number;
+  deferred: number;
+  failed: number;
+  applied: number;
+  staged: number;
+  rejected: number;
+  existingSkillUpdates: number;
+  stagedCandidates: number;
+}
+
+export interface LearningRunState {
+  runId?: string;
+  active: boolean;
+  dryRun?: boolean;
+  lookbackDays?: number | null;
+  maxSessions?: number | null;
+  inventory?: LearningInventoryPayload;
+  sessions: LearningSessionProgress[];
+  artifacts: Array<{ kind: string; path: string }>;
+  summary?: LearningRunSummary;
 }
 
 export interface ValidationMessage {
@@ -125,6 +271,17 @@ export interface CapabilitySummary {
   description?: string;
   memoryEnabled?: boolean;
   requiresExplicitAcceptance?: boolean;
+  path?: string;
+  instructionsPath?: string;
+  memoryTargets?: Array<{
+    name: string;
+    path: string;
+    absolutePath: string;
+    sections: string[];
+  }>;
+  aliases?: string[];
+  lifecycleState?: string | null;
+  migrationStatus?: string | null;
 }
 
 export interface CodexInstallState {
@@ -198,6 +355,12 @@ export interface PromotionArchive {
   archivedAt?: string;
 }
 
+export interface PromotionApply {
+  appliedAt?: string;
+  projectRoot?: string;
+  files?: string[];
+}
+
 export interface PromotionSummary {
   runId: string;
   branch: string | null;
@@ -210,6 +373,7 @@ export interface PromotionSummary {
   metadataPath: string;
   review: PromotionReview | null;
   archive: PromotionArchive | null;
+  apply?: PromotionApply | null;
 }
 
 export interface TreeRow {

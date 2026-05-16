@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 
 from govkb.commands.apply import run_codex_apply
+from govkb.commands.capabilities import run_capabilities
 from govkb.commands.candidates import run_candidates
 from govkb.commands.convert import run_convert
 from govkb.commands.create_capability import run_create_capability
@@ -100,10 +101,34 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for extension integrations.")
     status_parser.set_defaults(handler=run_status)
 
+    capabilities_parser = subparsers.add_parser("capabilities", help="List, rename, or merge governed capabilities.")
+    capabilities_subparsers = capabilities_parser.add_subparsers(dest="capability_action", required=True)
+
+    capabilities_list_parser = capabilities_subparsers.add_parser("list", help="List governed capabilities.")
+    capabilities_list_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    capabilities_list_parser.add_argument("--json", action="store_true", help="Emit machine-readable capability details.")
+    capabilities_list_parser.set_defaults(handler=run_capabilities)
+
+    capabilities_rename_parser = capabilities_subparsers.add_parser("rename", help="Rename one governed capability.")
+    capabilities_rename_parser.add_argument("old_capability_id", help="Existing governed capability id.")
+    capabilities_rename_parser.add_argument("new_capability_id", help="New governed capability id.")
+    capabilities_rename_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    capabilities_rename_parser.add_argument("--json", action="store_true", help="Emit machine-readable rename output.")
+    capabilities_rename_parser.set_defaults(handler=run_capabilities)
+
+    capabilities_merge_parser = capabilities_subparsers.add_parser("merge", help="Merge one governed capability into another.")
+    capabilities_merge_parser.add_argument("source_capability_id", help="Capability id to merge and remove.")
+    capabilities_merge_parser.add_argument("target_capability_id", help="Capability id that keeps the merged guidance.")
+    capabilities_merge_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    capabilities_merge_parser.add_argument("--json", action="store_true", help="Emit machine-readable merge output.")
+    capabilities_merge_parser.set_defaults(handler=run_capabilities)
+
     review_parser = subparsers.add_parser("review-memory", help="Run assistant memory review.")
     review_parser.add_argument("--assistant", required=True, choices=("codex",), help="Assistant to review.")
     review_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root to inspect.")
     review_parser.add_argument("--dry-run", action="store_true", help="Generate reports and patches without editing memory.")
+    review_parser.add_argument("--inventory-json", action="store_true", help="Emit session inventory JSON without AI classification.")
+    review_parser.add_argument("--progress-jsonl", action="store_true", help="Emit structured progress events as JSONL on stdout.")
     review_parser.add_argument("--lookback-days", type=float, help="Override incremental selection window.")
     review_parser.add_argument("--max-sessions", type=int, help="Maximum sessions to classify in one run.")
     review_parser.add_argument("--verbose", action="store_true", help="Write sanitized classifier inputs to the memory-review log dir.")
@@ -206,6 +231,21 @@ def build_parser() -> argparse.ArgumentParser:
     promotions_review_parser.add_argument("--reviewer", help="Reviewer name or id.")
     promotions_review_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
     promotions_review_parser.set_defaults(handler=run_promotions)
+
+    promotions_apply_parser = promotions_subparsers.add_parser(
+        "apply",
+        help="Apply an accepted isolated promotion into the active project without committing.",
+    )
+    promotions_apply_parser.add_argument("promotion", help="Promotion run id, branch name, or worktree path.")
+    promotions_apply_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root to apply into.")
+    promotions_apply_parser.add_argument("--codex-home", type=Path, help="Codex home override for promotion worktree inspection.")
+    promotions_apply_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Apply despite active .governed changes, an unaccepted lifecycle state, or HEAD mismatch.",
+    )
+    promotions_apply_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
+    promotions_apply_parser.set_defaults(handler=run_promotions)
 
     promotions_archive_parser = promotions_subparsers.add_parser(
         "archive",

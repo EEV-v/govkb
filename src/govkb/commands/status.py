@@ -199,6 +199,20 @@ def build_status_payload(project_root: Path, codex_home: Path | None = None) -> 
                 "description": capability.description,
                 "memoryEnabled": capability.memory_enabled,
                 "requiresExplicitAcceptance": capability.requires_explicit_acceptance,
+                "path": str(capability.capability_root),
+                "instructionsPath": str(capability.capability_root / "instructions.md"),
+                "memoryTargets": [
+                    {
+                        "name": target.name,
+                        "path": target.path,
+                        "absolutePath": str(capability.capability_root / target.path),
+                        "sections": list(target.sections),
+                    }
+                    for target in capability.targets
+                ],
+                "aliases": list(capability.aliases),
+                "lifecycleState": capability.lifecycle.state,
+                "migrationStatus": capability.migration_status,
             }
             for capability in sorted(bundle.capabilities.values(), key=lambda item: item.capability_id)
         ],

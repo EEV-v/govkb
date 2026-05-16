@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "projectRoot": "/repo",
+  "codexHome": "/tmp/codex-home",
+  "lookbackDays": 90,
+  "maxSessions": 5,
+  "sessions": {
+    "totalDiscovered": 12,
+    "selectedForReview": 5,
+    "selectedBeforeLimit": 8,
+    "selectedIndexed": 4,
+    "selectedFileOnly": 1,
+    "alreadyProcessed": 3,
+    "indexedRows": 10,
+    "indexedMissingFiles": 1,
+    "fileOnlyRecentUnprocessed": 2
+  },
+  "selectedSessions": [
+    {
+      "sessionId": "session-1",
+      "threadName": "Feature planning",
+      "updatedAt": "2026-04-24T09:12:57Z",
+      "indexed": true
+    }
+  ],
+  "memoryTargets": [
+    {
+      "skillId": "govkb-demo-project-knowledge-steward",
+      "capabilityId": "project-knowledge-steward",
+      "projectId": "demo-project",
+      "requiresExplicitAcceptance": false,
+      "memoryPath": "/tmp/codex-home/skills/govkb-demo-project-knowledge-steward/references/long-term-memory.md",
+      "sections": ["Working Agreement"]
+    }
+  ],
+  "recommendedBatch": {
+    "lookbackDays": 90,
+    "maxSessions": 5,
+    "dryRun": true,
+    "reason": "Review a bounded recent backfill before expanding scope."
+  }
+}

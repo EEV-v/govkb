@@ -1,0 +1,39 @@
+usage: govkb review-memory [-h] --assistant {codex}
+                           [--project-root PROJECT_ROOT] [--dry-run]
+                           [--inventory-json] [--progress-jsonl]
+                           [--lookback-days LOOKBACK_DAYS]
+                           [--max-sessions MAX_SESSIONS] [--verbose]
+                           [--codex-timeout CODEX_TIMEOUT]
+                           [--classifier-codex-home CLASSIFIER_CODEX_HOME]
+                           [--codex-model CODEX_MODEL]
+                           [--codex-reasoning {low,medium,high,xhigh}]
+                           [--session-file SESSION_FILE] [--no-auto-promote]
+
+options:
+  -h, --help            show this help message and exit
+  --assistant {codex}   Assistant to review.
+  --project-root PROJECT_ROOT
+                        Project root to inspect.
+  --dry-run             Generate reports and patches without editing memory.
+  --inventory-json      Emit session inventory JSON without AI classification.
+  --progress-jsonl      Emit structured progress events as JSONL on stdout.
+  --lookback-days LOOKBACK_DAYS
+                        Override incremental selection window.
+  --max-sessions MAX_SESSIONS
+                        Maximum sessions to classify in one run.
+  --verbose             Write sanitized classifier inputs to the memory-review
+                        log dir.
+  --codex-timeout CODEX_TIMEOUT
+                        Per-session codex exec timeout in seconds.
+  --classifier-codex-home CLASSIFIER_CODEX_HOME
+                        Codex home used only for nested classifier
+                        auth/config; output state still uses CODEX_HOME.
+  --codex-model CODEX_MODEL
+                        Codex model used for nested semantic classification.
+  --codex-reasoning {low,medium,high,xhigh}
+                        Codex reasoning effort used for nested semantic
+                        classification.
+  --session-file SESSION_FILE
+                        Classify one explicit session JSONL file.
+  --no-auto-promote     Do not run the automated non-mutating promotion check
+                        after local memory apply.

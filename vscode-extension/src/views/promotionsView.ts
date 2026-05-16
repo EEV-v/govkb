@@ -1,9 +1,70 @@
-import { PromotionSummary, TreeRow } from "../types";
+import { PromotionSummary, StatusPayload, TreeRow } from "../types";
 
-function changeDescription(promotion: PromotionSummary): string {
-  const changed = promotion.status.length;
-  const suffix = changed === 1 ? "change" : "changes";
-  return `${promotion.state}, ${changed} ${suffix}`;
+export interface PromotionGroup {
+  promotion: PromotionSummary;
+  hidden: number;
+}
+
+export function changedSkillCount(promotion: PromotionSummary): number {
+  return promotion.status.filter((line) => line.includes(".governed/capabilities/")).length || promotion.status.length;
+}
+
+function statusPath(line: string): string {
+  return line
+    .trim()
+    .replace(/^[!? MADRCU]{1,2}\s+/, "")
+    .replace(/^\.\/+/, "");
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+  const a = left.replace(/\/+$/, "");
+  const b = right.replace(/\/+$/, "");
+  return a === b || a.startsWith(`${b}/`) || b.startsWith(`${a}/`);
+}
+
+function activeGovernedPaths(status?: StatusPayload): string[] {
+  return (status?.project.governedStatus ?? []).map(statusPath).filter(Boolean);
+}
+
+function promotionPaths(promotion: PromotionSummary): string[] {
+  const applied = promotion.apply?.files ?? [];
+  if (applied.length > 0) {
+    return applied.map((item) => item.replace(/^\.\/+/, ""));
+  }
+  return promotion.status.map(statusPath).filter(Boolean);
+}
+
+export function isPromotionPendingCommit(promotion: PromotionSummary, status?: StatusPayload): boolean {
+  if (promotion.state !== "applied") {
+    return false;
+  }
+  if (!status) {
+    return true;
+  }
+  const active = activeGovernedPaths(status);
+  if (active.length === 0) {
+    return false;
+  }
+  const promoted = promotionPaths(promotion);
+  return active.some((activePath) => promoted.some((promotedPath) => pathsOverlap(activePath, promotedPath)));
+}
+
+function changeDescription(promotion: PromotionSummary, hidden = 0, status?: StatusPayload): string {
+  const changed = changedSkillCount(promotion);
+  const duplicateSuffix = hidden > 0 ? `, ${hidden} duplicate${hidden === 1 ? "" : "s"} hidden` : "";
+  const suffix = changed === 1 ? "skill file" : "skill files";
+  if (promotion.state === "accepted") {
+    return `${changed} ${suffix}, applies without commit${duplicateSuffix}`;
+  }
+  if (promotion.state === "applied") {
+    return isPromotionPendingCommit(promotion, status)
+      ? `${changed} ${suffix}, pending commit${duplicateSuffix}`
+      : `${changed} ${suffix}, finalized${duplicateSuffix}`;
+  }
+  if (promotion.state === "ready-for-review") {
+    return `${changed} ${suffix} ready${duplicateSuffix}`;
+  }
+  return `${changed} ${suffix}, ${promotion.state}${duplicateSuffix}`;
 }
 
 function promotionTooltip(promotion: PromotionSummary): string {
@@ -14,13 +75,124 @@ function promotionTooltip(promotion: PromotionSummary): string {
     `worktree: ${promotion.worktreeRoot}`,
     promotion.digestPath ? `digest: ${promotion.digestPath}` : undefined,
     promotion.review?.reason ? `review: ${promotion.review.decision ?? promotion.state} - ${promotion.review.reason}` : undefined,
+    promotion.apply?.appliedAt ? `applied: ${promotion.apply.appliedAt}` : undefined,
     promotion.archive?.reason ? `archive: ${promotion.archive.reason}` : undefined
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-export function promotionRows(promotions?: PromotionSummary[]): TreeRow[] {
+function promotionContextValue(promotion: PromotionSummary): string {
+  if (promotion.state === "ready-for-review") {
+    return "govkb.promotion.ready";
+  }
+  if (promotion.state === "accepted") {
+    return "govkb.promotion.accepted";
+  }
+  if (promotion.state === "applied") {
+    return "govkb.promotion.applied";
+  }
+  return "govkb.promotion";
+}
+
+function promotionLabel(promotion: PromotionSummary, status?: StatusPayload): string {
+  if (promotion.state === "accepted") {
+    return "Next: finalize accepted learning updates";
+  }
+  if (promotion.state === "applied") {
+    return isPromotionPendingCommit(promotion, status) ? "Next: commit governed changes" : "Learning updates finalized";
+  }
+  if (promotion.state === "ready-for-review") {
+    return "1. Open learning review";
+  }
+  return promotion.runId;
+}
+
+function promotionPriority(promotion: PromotionSummary): number {
+  if (promotion.state === "applied") {
+    return 3;
+  }
+  if (promotion.state === "accepted") {
+    return 2;
+  }
+  if (promotion.state === "ready-for-review") {
+    return 1;
+  }
+  return 0;
+}
+
+function promotionFingerprint(promotion: PromotionSummary): string {
+  if (!["ready-for-review", "accepted", "applied"].includes(promotion.state)) {
+    return promotion.runId;
+  }
+  const changed = promotion.status
+    .filter((line) => !line.includes(".governed/reports/promotions/"))
+    .map((line) => line.trim())
+    .sort();
+  return [promotion.head ?? "", ...changed].join("\n") || promotion.runId;
+}
+
+export function promotionGroups(promotions: PromotionSummary[]): PromotionGroup[] {
+  const byFingerprint = new Map<string, { promotion: PromotionSummary; index: number; hidden: number }>();
+  promotions.forEach((promotion, index) => {
+    const key = promotionFingerprint(promotion);
+    const existing = byFingerprint.get(key);
+    if (!existing) {
+      byFingerprint.set(key, { promotion, index, hidden: 0 });
+      return;
+    }
+    existing.hidden += 1;
+    if (promotionPriority(promotion) > promotionPriority(existing.promotion)) {
+      existing.promotion = promotion;
+    }
+  });
+  const compacted = [...byFingerprint.values()].sort((a, b) => a.index - b.index);
+  return compacted.map((item) => ({ promotion: item.promotion, hidden: item.hidden }));
+}
+
+function primaryCommand(promotion: PromotionSummary): TreeRow["command"] {
+  if (promotion.state === "accepted") {
+    return {
+      command: "govkb.finalizeAcceptedPromotion",
+      title: "GovKB: Finalize Accepted Learning Updates",
+      arguments: [promotion]
+    };
+  }
+  return { command: "govkb.openPromotion", title: "GovKB: Open Promotion Digest", arguments: [promotion] };
+}
+
+function reviewDecisionRows(promotion: PromotionSummary): TreeRow[] {
+  if (promotion.state !== "ready-for-review") {
+    return [];
+  }
+  return [
+    {
+      label: "2. Accept reviewed updates",
+      description: "then finalize",
+      tooltip:
+        "Use this after reading the digest. Accepting records your review decision and makes finalization available.",
+      command: {
+        command: "govkb.markPromotionAccepted",
+        title: "GovKB: Mark Promotion Accepted",
+        arguments: [promotion]
+      },
+      contextValue: "govkb.promotion.ready.accept"
+    },
+    {
+      label: "Reject this review",
+      description: "keep project unchanged",
+      tooltip: "Reject this promotion if the digest is wrong, noisy, or should not become governed knowledge.",
+      command: {
+        command: "govkb.markPromotionRejected",
+        title: "GovKB: Mark Promotion Rejected",
+        arguments: [promotion]
+      },
+      contextValue: "govkb.promotion.ready.reject"
+    }
+  ];
+}
+
+export function promotionRows(promotions?: PromotionSummary[], status?: StatusPayload): TreeRow[] {
   if (!promotions) {
     return [
       {
@@ -47,11 +219,24 @@ export function promotionRows(promotions?: PromotionSummary[]): TreeRow[] {
       }
     ];
   }
-  return promotions.map((promotion) => ({
-    label: promotion.runId,
-    description: changeDescription(promotion),
-    tooltip: promotionTooltip(promotion),
-    command: { command: "govkb.openPromotion", title: "GovKB: Open Promotion Digest", arguments: [promotion] },
-    contextValue: "govkb.promotion"
-  }));
+  const groups = promotionGroups(promotions);
+  const hiddenTotal = groups.reduce((total, group) => total + group.hidden, 0);
+  const rows: TreeRow[] = groups.flatMap(({ promotion, hidden }) => [
+    {
+      label: promotionLabel(promotion, status),
+      description: changeDescription(promotion, hidden, status),
+      tooltip: promotionTooltip(promotion),
+      command: primaryCommand(promotion),
+      contextValue: promotionContextValue(promotion)
+    },
+    ...reviewDecisionRows(promotion)
+  ]);
+  if (hiddenTotal > 0) {
+    rows.push({
+      label: "Duplicate review worktrees",
+      description: `${hiddenTotal} hidden`,
+      tooltip: "Repeated learning apply runs created equivalent isolated review worktrees for the same governed changes. They are hidden here because one lifecycle decision covers the equivalent change set."
+    });
+  }
+  return rows;
 }

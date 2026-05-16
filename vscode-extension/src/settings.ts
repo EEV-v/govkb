@@ -24,7 +24,8 @@ export function defaultSettings(): GovkbSettings {
     classifierModel: undefined,
     classifierReasoning: undefined,
     reviewTimeoutSeconds: 180,
-    reviewMaxSessions: 1,
+    reviewLookbackDays: 90,
+    reviewMaxSessions: 5,
     defaultDryRun: true,
     autoRefreshOnStartup: true,
     monitorIntervalSeconds: undefined
@@ -37,6 +38,7 @@ export function resolveSettings(config: ConfigurationReader): GovkbSettings {
   const classifierModel = config.get("classifierModel", "");
   const classifierReasoning = config.get("classifierReasoning", "");
   const timeout = config.get("reviewTimeoutSeconds", defaults.reviewTimeoutSeconds ?? 0);
+  const lookbackDays = config.get("reviewLookbackDays", defaults.reviewLookbackDays);
   const maxSessions = config.get("reviewMaxSessions", defaults.reviewMaxSessions);
   const monitorInterval = config.get("monitorIntervalSeconds", 0);
   return {
@@ -47,6 +49,7 @@ export function resolveSettings(config: ConfigurationReader): GovkbSettings {
     classifierModel: classifierModel.trim() || undefined,
     classifierReasoning: asOptionalReasoning(classifierReasoning),
     reviewTimeoutSeconds: Number.isFinite(timeout) && timeout > 0 ? Math.floor(timeout) : undefined,
+    reviewLookbackDays: Number.isFinite(lookbackDays) && lookbackDays > 0 ? Math.floor(lookbackDays) : defaults.reviewLookbackDays,
     reviewMaxSessions: Number.isFinite(maxSessions) && maxSessions > 0 ? Math.floor(maxSessions) : defaults.reviewMaxSessions,
     defaultDryRun: config.get("defaultDryRun", defaults.defaultDryRun),
     autoRefreshOnStartup: config.get("autoRefreshOnStartup", defaults.autoRefreshOnStartup),

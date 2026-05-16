@@ -1,0 +1,6 @@
+{"event":"run_started","runId":"run-1","dryRun":true,"lookbackDays":90,"maxSessions":5}
+{"event":"session_selected","runId":"run-1","sessionId":"session-1","threadName":"Feature planning","updatedAt":"2026-04-24T09:12:57Z","status":"queued"}
+{"event":"session_classifying","runId":"run-1","sessionId":"session-1","status":"classifying","targetSkills":["project-knowledge-steward"]}
+{"event":"session_classified","runId":"run-1","sessionId":"session-1","status":"classified","targetSkills":["project-knowledge-steward"],"lessonCount":2,"appliedCount":1,"stagedCount":0,"rejectedCount":0,"candidateCount":0}
+{"event":"artifact_written","runId":"run-1","kind":"report","path":"/tmp/codex-home/memories/govkb/projects/demo/codex-memory-review/reports/run-1-report.md"}
+{"event":"run_finished","runId":"run-1","status":"completed","reviewed":1,"skipped":0,"deferred":0,"failed":0,"applied":1,"staged":0,"rejected":0,"existingSkillUpdates":1,"stagedCandidates":0}

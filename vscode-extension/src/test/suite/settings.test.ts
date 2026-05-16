@@ -27,7 +27,8 @@ test("resolveSettings sanitizes invalid enum and timeout values", () => {
   assert.equal(settings.classifierReasoning, undefined);
   assert.equal(settings.setupMode, "guidedInstall");
   assert.equal(settings.reviewTimeoutSeconds, undefined);
-  assert.equal(settings.reviewMaxSessions, 1);
+  assert.equal(settings.reviewLookbackDays, 90);
+  assert.equal(settings.reviewMaxSessions, 5);
   assert.equal(settings.monitorIntervalSeconds, undefined);
 });
 

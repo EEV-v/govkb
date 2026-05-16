@@ -47,6 +47,10 @@ def run_review_memory(args) -> int:
     cmd = [*_memory_review_command(script), "--once", "--project-root", str(project_root)]
     if getattr(args, "dry_run", False):
         cmd.append("--dry-run")
+    if getattr(args, "inventory_json", False):
+        cmd.append("--inventory-json")
+    if getattr(args, "progress_jsonl", False):
+        cmd.append("--progress-jsonl")
     if getattr(args, "lookback_days", None) is not None:
         cmd.extend(["--lookback-days", str(args.lookback_days)])
     if getattr(args, "max_sessions", None) is not None:

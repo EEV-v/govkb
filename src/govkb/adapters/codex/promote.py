@@ -19,6 +19,7 @@ from govkb.core.memory_scaffold import is_scaffold_bullet
 from govkb.core.promotion_lifecycle import initial_promotion_metadata
 from govkb.core.promotion_lifecycle import promotion_project_key
 from govkb.core.promotion_lifecycle import promotion_metadata_path
+from govkb.core.promotion_lifecycle import read_promotion_metadata
 from govkb.core.promotion_lifecycle import write_promotion_metadata
 
 
@@ -209,6 +210,58 @@ def _add_promotion_worktree(git_root: Path, worktree_root: Path, branch: str) ->
     return False, f"skipped: git worktree add failed: {detail}"
 
 
+def _existing_equivalent_isolated_worktree(
+    *,
+    active_root: Path,
+    relative_project_root: Path,
+    codex_home: Path,
+    project_id: str,
+    safe_project_id: str,
+    items: tuple[PromotionItem, ...],
+) -> WorktreeIsolation | None:
+    worktrees_root = codex_home / "memories" / "govkb" / "worktrees" / safe_project_id
+    if not worktrees_root.is_dir():
+        return None
+    comparable = [item for item in items if item.additions]
+    if not comparable:
+        return None
+    for worktree_root in sorted(worktrees_root.iterdir(), reverse=True):
+        if not worktree_root.is_dir():
+            continue
+        metadata = read_promotion_metadata(promotion_metadata_path(codex_home, project_id, worktree_root.name))
+        if metadata and metadata.get("state") in {"rejected", "archived"}:
+            continue
+        project_root = worktree_root / relative_project_root
+        if not (project_root / ".governed").exists():
+            project_root = worktree_root
+        if not (project_root / ".governed").exists():
+            continue
+        equivalent = True
+        for item in comparable:
+            try:
+                relative_path = item.repo_path.resolve().relative_to(active_root)
+            except ValueError:
+                equivalent = False
+                break
+            candidate_path = project_root / relative_path
+            if not candidate_path.is_file() or not item.local_path.is_file():
+                equivalent = False
+                break
+            if candidate_path.read_text(encoding="utf-8").rstrip() != item.local_path.read_text(encoding="utf-8").rstrip():
+                equivalent = False
+                break
+        if equivalent:
+            branch = str(metadata.get("branch") or "") if metadata else None
+            return WorktreeIsolation(
+                attempted=True,
+                branch=branch or None,
+                worktree_root=worktree_root,
+                project_root=project_root,
+                message=f"skipped: equivalent isolated promotion already exists ({worktree_root.name})",
+            )
+    return None
+
+
 def _git_hygiene_before(project_root: Path) -> GitHygiene:
     root = _git_root(project_root)
     if root is None:
@@ -300,6 +353,43 @@ def _write_report(project_root: Path, result: PromotionResult, run_id: str) -> P
     return report_path
 
 
+def _promotion_additions_payload(items: tuple[PromotionItem, ...]) -> list[dict[str, object]]:
+    """Return promoted additions in a metadata-friendly shape."""
+    return [
+        {
+            "capabilityId": item.capability_id,
+            "repoPath": str(item.repo_path),
+            "additions": list(item.additions),
+        }
+        for item in items
+        if item.promoted and item.additions
+    ]
+
+
+def _accepted_additions_by_capability(codex_home: Path, project_id: str) -> dict[str, set[str]]:
+    """Return additions that already have an accepted lifecycle decision."""
+    root = promotion_metadata_path(codex_home, project_id, "placeholder").parent
+    accepted: dict[str, set[str]] = {}
+    if not root.is_dir():
+        return accepted
+    for metadata_path in root.glob("*.json"):
+        metadata = read_promotion_metadata(metadata_path)
+        if not metadata:
+            continue
+        review = metadata.get("review")
+        if not isinstance(review, dict) or review.get("decision") != "accepted":
+            continue
+        for item in metadata.get("promotedAdditions") or []:
+            if not isinstance(item, dict):
+                continue
+            capability_id = item.get("capabilityId")
+            additions = item.get("additions")
+            if not isinstance(capability_id, str) or not isinstance(additions, list):
+                continue
+            accepted.setdefault(capability_id, set()).update(addition for addition in additions if isinstance(addition, str))
+    return accepted
+
+
 def _write_digest(project_root: Path, result: PromotionResult, run_id: str, report_path: Path) -> Path:
     digest_dir = project_root / ".governed" / "reports" / "promotions"
     digest_dir.mkdir(parents=True, exist_ok=True)
@@ -330,14 +420,42 @@ def _write_digest(project_root: Path, result: PromotionResult, run_id: str, repo
         lines.extend(f"- `{line}`" for line in changed)
     else:
         lines.append("- None")
-    lines.extend(["", "## Promoted Additions"])
+    accepted_additions = _accepted_additions_by_capability(result.codex_home, result.project_id)
+    lines.extend(["", "## Review Scope"])
+    lines.append("- Review only `New Additions To Review` before accepting or rejecting this promotion.")
+    lines.append(
+        "- `Previously Accepted Carry-Forward` entries are included because they have not been applied to the active governed package yet."
+    )
+    lines.append("- Accepting or applying this promotion still acts on the combined change set shown in this digest.")
+    lines.extend(["", "## New Additions To Review"])
     promoted_items = [item for item in result.items if item.promoted]
     if not promoted_items:
         lines.append("- None")
     for item in promoted_items:
+        new_additions = [addition for addition in item.additions if addition not in accepted_additions.get(item.capability_id, set())]
+        if not new_additions:
+            continue
         lines.append(f"- `{item.capability_id}` -> `{item.repo_path}`")
-        for addition in item.additions:
+        for addition in new_additions:
             lines.append(f"  Addition: {addition[:300]}")
+    if promoted_items and not any(
+        addition not in accepted_additions.get(item.capability_id, set())
+        for item in promoted_items
+        for addition in item.additions
+    ):
+        lines.append("- None")
+    carry_forward = [
+        (item, [addition for addition in item.additions if addition in accepted_additions.get(item.capability_id, set())])
+        for item in promoted_items
+    ]
+    carry_forward = [(item, additions) for item, additions in carry_forward if additions]
+    lines.extend(["", "## Previously Accepted Carry-Forward"])
+    if not carry_forward:
+        lines.append("- None")
+    for item, additions in carry_forward:
+        lines.append(f"- `{item.capability_id}` -> `{item.repo_path}`")
+        for addition in additions:
+            lines.append(f"  Accepted earlier: {addition[:300]}")
     rejected_items = [item for item in result.items if not item.promoted and item.reason.startswith("rejected")]
     lines.extend(["", "## Rejections"])
     if not rejected_items:
@@ -451,6 +569,17 @@ def promote_codex_memory_in_isolated_worktree(
 
     project_id = active_bundle.project_id or "unknown-project"
     safe_project_id = _safe_branch_component(project_id)
+    existing_isolation = _existing_equivalent_isolated_worktree(
+        active_root=active_root,
+        relative_project_root=relative_project_root,
+        codex_home=codex_home,
+        project_id=project_id,
+        safe_project_id=safe_project_id,
+        items=preview.items,
+    )
+    if existing_isolation is not None:
+        return _with_isolation(preview, existing_isolation)
+
     run_id = _worktree_run_id()
     branch = f"codex/govkb-auto-promote/{safe_project_id}/{run_id}"
     worktree_root = codex_home / "memories" / "govkb" / "worktrees" / safe_project_id / run_id
@@ -515,6 +644,7 @@ def promote_codex_memory_in_isolated_worktree(
                 worktree_root=worktree_root,
                 digest_path=digest_path,
                 report_path=report_path,
+                promoted_additions=_promotion_additions_payload(final.items),
             ),
         )
     return final

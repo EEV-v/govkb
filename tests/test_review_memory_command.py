@@ -116,6 +116,53 @@ class ReviewMemoryCommandTests(unittest.TestCase):
             self.assertEqual(captured["cmd"][0], sys.executable)
             self.assertEqual(captured["cmd"][1], str(script))
 
+    def test_review_memory_forwards_inventory_and_progress_flags(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = root / "Project"
+            codex_home = root / "codex-home"
+            script = root / "codex-memory-review"
+            project_root.mkdir()
+            codex_home.mkdir()
+            script.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+
+            captured: dict[str, object] = {}
+
+            def fake_run(cmd, **kwargs):
+                captured["cmd"] = list(cmd)
+                return subprocess.CompletedProcess(cmd, 0)
+
+            args = argparse.Namespace(
+                assistant="codex",
+                project_root=project_root,
+                dry_run=True,
+                inventory_json=True,
+                progress_jsonl=True,
+                lookback_days=90,
+                max_sessions=5,
+                verbose=False,
+                codex_timeout=120,
+                classifier_codex_home=None,
+                codex_model=None,
+                codex_reasoning=None,
+                session_file=None,
+                auto_promote=True,
+            )
+
+            with patch.dict(
+                os.environ,
+                {
+                    "CODEX_HOME": str(codex_home),
+                    "GOVKB_CODEX_MEMORY_REVIEW": str(script),
+                },
+            ), patch("govkb.commands.review_memory.subprocess.run", side_effect=fake_run):
+                exit_code = run_review_memory(args)
+
+            self.assertEqual(exit_code, 0)
+            cmd = captured["cmd"]
+            self.assertIn("--inventory-json", cmd)
+            self.assertIn("--progress-jsonl", cmd)
+
 
 if __name__ == "__main__":
     unittest.main()

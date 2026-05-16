@@ -10,7 +10,7 @@ from typing import Any
 from govkb.core.install_state import iso_utc_now
 
 
-PROMOTION_STATES = {"ready-for-review", "accepted", "rejected", "archived"}
+PROMOTION_STATES = {"ready-for-review", "accepted", "applied", "rejected", "archived"}
 
 
 def promotion_project_key(project_id: str) -> str:
@@ -60,6 +60,7 @@ def initial_promotion_metadata(
     worktree_root: Path,
     digest_path: Path | None,
     report_path: Path | None,
+    promoted_additions: list[dict[str, object]] | None = None,
 ) -> dict[str, Any]:
     """Build initial lifecycle metadata for one isolated promotion."""
     return {
@@ -73,6 +74,7 @@ def initial_promotion_metadata(
         "worktreeRoot": str(worktree_root),
         "digestPath": str(digest_path) if digest_path else None,
         "reportPath": str(report_path) if report_path else None,
+        "promotedAdditions": promoted_additions or [],
         "createdAt": iso_utc_now(),
         "review": None,
         "archive": None,
@@ -107,5 +109,22 @@ def archived_promotion_metadata(existing: dict[str, Any], *, reason: str | None)
     updated["archive"] = {
         "reason": reason,
         "archivedAt": iso_utc_now(),
+    }
+    return updated
+
+
+def applied_promotion_metadata(
+    existing: dict[str, Any],
+    *,
+    project_root: Path,
+    files: list[str],
+) -> dict[str, Any]:
+    """Return lifecycle metadata updated after applying a reviewed promotion."""
+    updated = dict(existing)
+    updated["state"] = "applied"
+    updated["apply"] = {
+        "appliedAt": iso_utc_now(),
+        "projectRoot": str(project_root),
+        "files": files,
     }
     return updated

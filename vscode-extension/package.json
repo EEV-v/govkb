@@ -17,22 +17,35 @@
     "onCommand:govkb.oneClickApply",
     "onCommand:govkb.validateProject",
     "onCommand:govkb.showStatus",
+    "onCommand:govkb.refreshCapabilities",
+    "onCommand:govkb.openCapability",
+    "onCommand:govkb.convertSkillToGoverned",
+    "onCommand:govkb.renameGovernedSkill",
+    "onCommand:govkb.mergeGovernedSkills",
+    "onCommand:govkb.discoverLearning",
+    "onCommand:govkb.reviewLearningDryRun",
+    "onCommand:govkb.reviewLearningApply",
     "onCommand:govkb.reviewMemoryDryRun",
     "onCommand:govkb.reviewMemoryApply",
     "onCommand:govkb.promoteAuto",
     "onCommand:govkb.refreshPromotions",
     "onCommand:govkb.openPromotion",
+    "onCommand:govkb.openPromotionWorktree",
     "onCommand:govkb.showPromotion",
     "onCommand:govkb.markPromotionAccepted",
     "onCommand:govkb.markPromotionRejected",
     "onCommand:govkb.archivePromotion",
+    "onCommand:govkb.applyPromotionToProject",
+    "onCommand:govkb.finalizeAcceptedPromotion",
     "onCommand:govkb.listCandidates",
+    "onCommand:govkb.openCandidate",
     "onCommand:govkb.refreshReports",
     "onCommand:govkb.openLatestReport",
     "onCommand:govkb.openReport",
     "onCommand:govkb.openOutput",
     "onView:govkb.status",
     "onView:govkb.capabilities",
+    "onView:govkb.learning",
     "onView:govkb.candidates",
     "onView:govkb.promotions",
     "onView:govkb.reports"
@@ -67,6 +80,46 @@
         "icon": "$(pulse)"
       },
       {
+        "command": "govkb.refreshCapabilities",
+        "title": "GovKB: Refresh Governed Skills",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "govkb.openCapability",
+        "title": "GovKB: Open Governed Skill",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "govkb.convertSkillToGoverned",
+        "title": "GovKB: Convert One Existing Skill To Governed",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "govkb.renameGovernedSkill",
+        "title": "GovKB: Rename Governed Skill",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "govkb.mergeGovernedSkills",
+        "title": "GovKB: Merge Governed Skills",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "govkb.discoverLearning",
+        "title": "GovKB: Discover Learning Opportunities",
+        "icon": "$(search)"
+      },
+      {
+        "command": "govkb.reviewLearningDryRun",
+        "title": "GovKB: Review Learning Dry Run",
+        "icon": "$(debug-alt)"
+      },
+      {
+        "command": "govkb.reviewLearningApply",
+        "title": "GovKB: Review Learning Apply",
+        "icon": "$(play)"
+      },
+      {
         "command": "govkb.reviewMemoryDryRun",
         "title": "GovKB: Review Memory Dry Run",
         "icon": "$(search)"
@@ -92,6 +145,11 @@
         "icon": "$(go-to-file)"
       },
       {
+        "command": "govkb.openPromotionWorktree",
+        "title": "GovKB: Open Promotion Worktree",
+        "icon": "$(folder-opened)"
+      },
+      {
         "command": "govkb.showPromotion",
         "title": "GovKB: Show Promotion Details",
         "icon": "$(eye)"
@@ -100,6 +158,16 @@
         "command": "govkb.markPromotionAccepted",
         "title": "GovKB: Mark Promotion Accepted",
         "icon": "$(pass)"
+      },
+      {
+        "command": "govkb.applyPromotionToProject",
+        "title": "GovKB: Finalize Accepted Learning Updates",
+        "icon": "$(git-merge)"
+      },
+      {
+        "command": "govkb.finalizeAcceptedPromotion",
+        "title": "GovKB: Finalize Accepted Learning Updates",
+        "icon": "$(git-merge)"
       },
       {
         "command": "govkb.markPromotionRejected",
@@ -115,6 +183,11 @@
         "command": "govkb.listCandidates",
         "title": "GovKB: List Candidates",
         "icon": "$(list-tree)"
+      },
+      {
+        "command": "govkb.openCandidate",
+        "title": "GovKB: Open Candidate Draft",
+        "icon": "$(go-to-file)"
       },
       {
         "command": "govkb.refreshReports",
@@ -152,10 +225,38 @@
           "command": "govkb.showStatus"
         },
         {
-          "command": "govkb.reviewMemoryDryRun"
+          "command": "govkb.refreshCapabilities",
+          "when": "false"
         },
         {
-          "command": "govkb.reviewMemoryApply"
+          "command": "govkb.openCapability",
+          "when": "false"
+        },
+        {
+          "command": "govkb.convertSkillToGoverned"
+        },
+        {
+          "command": "govkb.renameGovernedSkill"
+        },
+        {
+          "command": "govkb.mergeGovernedSkills"
+        },
+        {
+          "command": "govkb.discoverLearning"
+        },
+        {
+          "command": "govkb.reviewLearningDryRun"
+        },
+        {
+          "command": "govkb.reviewLearningApply"
+        },
+        {
+          "command": "govkb.reviewMemoryDryRun",
+          "when": "false"
+        },
+        {
+          "command": "govkb.reviewMemoryApply",
+          "when": "false"
         },
         {
           "command": "govkb.promoteAuto"
@@ -168,11 +269,23 @@
           "when": "false"
         },
         {
+          "command": "govkb.openPromotionWorktree",
+          "when": "false"
+        },
+        {
           "command": "govkb.showPromotion",
           "when": "false"
         },
         {
           "command": "govkb.markPromotionAccepted",
+          "when": "false"
+        },
+        {
+          "command": "govkb.applyPromotionToProject",
+          "when": "false"
+        },
+        {
+          "command": "govkb.finalizeAcceptedPromotion",
           "when": "false"
         },
         {
@@ -184,10 +297,16 @@
           "when": "false"
         },
         {
-          "command": "govkb.listCandidates"
+          "command": "govkb.listCandidates",
+          "when": "false"
         },
         {
-          "command": "govkb.refreshReports"
+          "command": "govkb.openCandidate",
+          "when": "false"
+        },
+        {
+          "command": "govkb.refreshReports",
+          "when": "false"
         },
         {
           "command": "govkb.openLatestReport"
@@ -222,29 +341,39 @@
           "group": "navigation@4"
         },
         {
-          "command": "govkb.showStatus",
+          "command": "govkb.refreshCapabilities",
           "when": "view == govkb.capabilities",
           "group": "navigation@1"
         },
         {
-          "command": "govkb.oneClickApply",
+          "command": "govkb.convertSkillToGoverned",
           "when": "view == govkb.capabilities",
           "group": "navigation@2"
+        },
+        {
+          "command": "govkb.mergeGovernedSkills",
+          "when": "view == govkb.capabilities",
+          "group": "navigation@3"
+        },
+        {
+          "command": "govkb.discoverLearning",
+          "when": "view == govkb.learning",
+          "group": "navigation@1"
+        },
+        {
+          "command": "govkb.reviewLearningDryRun",
+          "when": "view == govkb.learning",
+          "group": "navigation@2"
+        },
+        {
+          "command": "govkb.reviewLearningApply",
+          "when": "view == govkb.learning",
+          "group": "navigation@3"
         },
         {
           "command": "govkb.listCandidates",
           "when": "view == govkb.candidates",
           "group": "navigation@1"
-        },
-        {
-          "command": "govkb.reviewMemoryDryRun",
-          "when": "view == govkb.candidates",
-          "group": "navigation@2"
-        },
-        {
-          "command": "govkb.reviewMemoryApply",
-          "when": "view == govkb.candidates",
-          "group": "navigation@3"
         },
         {
           "command": "govkb.refreshPromotions",
@@ -262,46 +391,66 @@
           "group": "navigation@1"
         },
         {
-          "command": "govkb.openLatestReport",
+          "command": "govkb.reviewLearningDryRun",
           "when": "view == govkb.reports",
           "group": "navigation@2"
-        },
-        {
-          "command": "govkb.reviewMemoryDryRun",
-          "when": "view == govkb.reports",
-          "group": "navigation@3"
-        },
-        {
-          "command": "govkb.reviewMemoryApply",
-          "when": "view == govkb.reports",
-          "group": "navigation@4"
         }
       ],
       "view/item/context": [
         {
           "command": "govkb.openPromotion",
-          "when": "view == govkb.promotions && viewItem == govkb.promotion",
+          "when": "view == govkb.promotions && (viewItem == govkb.promotion || viewItem == govkb.promotion.ready || viewItem == govkb.promotion.accepted || viewItem == govkb.promotion.applied)",
           "group": "inline@1"
         },
         {
+          "command": "govkb.openPromotionWorktree",
+          "when": "view == govkb.promotions && (viewItem == govkb.promotion || viewItem == govkb.promotion.ready || viewItem == govkb.promotion.accepted || viewItem == govkb.promotion.applied)",
+          "group": "navigation@9"
+        },
+        {
           "command": "govkb.showPromotion",
-          "when": "view == govkb.promotions && viewItem == govkb.promotion",
+          "when": "view == govkb.promotions && (viewItem == govkb.promotion || viewItem == govkb.promotion.ready || viewItem == govkb.promotion.accepted || viewItem == govkb.promotion.applied)",
           "group": "inline@2"
         },
         {
-          "command": "govkb.markPromotionAccepted",
-          "when": "view == govkb.promotions && viewItem == govkb.promotion",
+          "command": "govkb.finalizeAcceptedPromotion",
+          "when": "view == govkb.promotions && viewItem == govkb.promotion.accepted",
           "group": "navigation@1"
         },
         {
-          "command": "govkb.markPromotionRejected",
-          "when": "view == govkb.promotions && viewItem == govkb.promotion",
+          "command": "govkb.markPromotionAccepted",
+          "when": "view == govkb.promotions && viewItem == govkb.promotion.ready",
           "group": "navigation@2"
         },
         {
-          "command": "govkb.archivePromotion",
-          "when": "view == govkb.promotions && viewItem == govkb.promotion",
+          "command": "govkb.markPromotionRejected",
+          "when": "view == govkb.promotions && viewItem == govkb.promotion.ready",
           "group": "navigation@3"
+        },
+        {
+          "command": "govkb.archivePromotion",
+          "when": "view == govkb.promotions && (viewItem == govkb.promotion || viewItem == govkb.promotion.accepted || viewItem == govkb.promotion.applied)",
+          "group": "navigation@4"
+        },
+        {
+          "command": "govkb.openCandidate",
+          "when": "view == govkb.candidates && viewItem == govkb.candidate",
+          "group": "inline@1"
+        },
+        {
+          "command": "govkb.openCapability",
+          "when": "view == govkb.capabilities && viewItem == govkb.capability",
+          "group": "inline@1"
+        },
+        {
+          "command": "govkb.renameGovernedSkill",
+          "when": "view == govkb.capabilities && viewItem == govkb.capability",
+          "group": "navigation@1"
+        },
+        {
+          "command": "govkb.mergeGovernedSkills",
+          "when": "view == govkb.capabilities && viewItem == govkb.capability",
+          "group": "navigation@2"
         }
       ]
     },
@@ -355,10 +504,15 @@
           "default": 180,
           "description": "Classifier timeout in seconds for GovKB memory review. Use 0 to let the GovKB CLI default apply."
         },
+        "govkb.reviewLookbackDays": {
+          "type": "number",
+          "default": 90,
+          "description": "Lookback window in days for GovKB learning discovery and bounded memory review."
+        },
         "govkb.reviewMaxSessions": {
           "type": "number",
-          "default": 1,
-          "description": "Maximum recent Codex sessions scanned by GovKB memory review; keep this low for local VSIX validation."
+          "default": 5,
+          "description": "Maximum recent Codex sessions scanned by GovKB learning review in one batch."
         },
         "govkb.defaultDryRun": {
           "type": "boolean",
@@ -394,7 +548,11 @@
         },
         {
           "id": "govkb.capabilities",
-          "name": "Capabilities"
+          "name": "Governed Skills"
+        },
+        {
+          "id": "govkb.learning",
+          "name": "Learning"
         },
         {
           "id": "govkb.candidates",

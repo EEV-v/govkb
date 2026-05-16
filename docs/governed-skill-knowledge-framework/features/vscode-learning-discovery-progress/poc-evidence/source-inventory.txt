@@ -1,0 +1,49 @@
+src/govkb/commands/review_memory.py:51:        cmd.append("--inventory-json")
+src/govkb/commands/review_memory.py:53:        cmd.append("--progress-jsonl")
+src/govkb/commands/review_memory.py:55:        cmd.extend(["--lookback-days", str(args.lookback_days)])
+src/govkb/commands/review_memory.py:57:        cmd.extend(["--max-sessions", str(args.max_sessions)])
+src/govkb/cli.py:107:    review_parser.add_argument("--inventory-json", action="store_true", help="Emit session inventory JSON without AI classification.")
+src/govkb/cli.py:108:    review_parser.add_argument("--progress-jsonl", action="store_true", help="Emit structured progress events as JSONL on stdout.")
+src/govkb/cli.py:109:    review_parser.add_argument("--lookback-days", type=float, help="Override incremental selection window.")
+src/govkb/cli.py:110:    review_parser.add_argument("--max-sessions", type=int, help="Maximum sessions to classify in one run.")
+src/govkb/adapters/codex/bin/codex-memory-review:2241:    parser.add_argument("--inventory-json", action="store_true", help="Emit session inventory JSON and exit without classification.")
+src/govkb/adapters/codex/bin/codex-memory-review:2242:    parser.add_argument("--progress-jsonl", action="store_true", help="Emit structured progress events as JSONL on stdout.")
+src/govkb/adapters/codex/bin/codex-memory-review:2243:    parser.add_argument("--lookback-days", type=float, default=None, help="Override incremental selection window.")
+src/govkb/adapters/codex/bin/codex-memory-review:2244:    parser.add_argument("--max-sessions", type=int, default=20, help="Maximum sessions to classify in one run.")
+vscode-extension/src/types.ts:13:  reviewMaxSessions: number;
+vscode-extension/src/settings.ts:28:    reviewMaxSessions: 5,
+vscode-extension/src/settings.ts:42:  const maxSessions = config.get("reviewMaxSessions", defaults.reviewMaxSessions);
+vscode-extension/src/settings.ts:53:    reviewMaxSessions: Number.isFinite(maxSessions) && maxSessions > 0 ? Math.floor(maxSessions) : defaults.reviewMaxSessions,
+vscode-extension/src/flows.ts:11:  reviewMemoryCommand,
+vscode-extension/src/flows.ts:159:  const command = reviewMemoryCommand(settings, projectRoot, dryRun);
+vscode-extension/src/test/suite/flows.test.ts:112:        : command.args.includes("--inventory-json")
+vscode-extension/src/test/suite/flows.test.ts:114:          : command.args.includes("--progress-jsonl")
+vscode-extension/src/test/suite/flows.test.ts:119:    if (stdout && command.args.includes("--progress-jsonl")) {
+vscode-extension/src/test/suite/flows.test.ts:209:  assert.equal(result.commands[0].args.includes("--inventory-json"), true);
+vscode-extension/src/test/suite/flows.test.ts:218:  assert.equal(result.commands[0].args.includes("--progress-jsonl"), true);
+vscode-extension/src/test/suite/packaging.test.ts:29:  assert.match(manifest.contributes.configuration.properties["govkb.reviewMaxSessions"].description, /one batch/);
+vscode-extension/src/govkbCli.ts:97:export function reviewMemoryCommand(settings: GovkbSettings, projectRoot: string, dryRun = settings.defaultDryRun): CliCommand {
+vscode-extension/src/govkbCli.ts:108:  args.push("--lookback-days", String(settings.reviewLookbackDays));
+vscode-extension/src/govkbCli.ts:109:  args.push("--max-sessions", String(settings.reviewMaxSessions));
+vscode-extension/src/govkbCli.ts:130:    "--inventory-json",
+vscode-extension/src/govkbCli.ts:131:    "--lookback-days",
+vscode-extension/src/govkbCli.ts:133:    "--max-sessions",
+vscode-extension/src/govkbCli.ts:134:    String(settings.reviewMaxSessions)
+vscode-extension/src/govkbCli.ts:145:  const command = reviewMemoryCommand(settings, projectRoot, dryRun);
+vscode-extension/src/govkbCli.ts:146:  return { ...command, args: [...command.args, "--progress-jsonl"] };
+vscode-extension/src/govkbCli.ts:150:  return reviewMemoryCommand(settings, projectRoot, true);
+vscode-extension/src/govkbCli.ts:154:  return reviewMemoryCommand(settings, projectRoot, false);
+vscode-extension/src/test/suite/govkbCli.test.ts:15:  reviewMemoryCommand,
+vscode-extension/src/test/suite/govkbCli.test.ts:108:    "--lookback-days",
+vscode-extension/src/test/suite/govkbCli.test.ts:110:    "--max-sessions",
+vscode-extension/src/test/suite/govkbCli.test.ts:125:    "--lookback-days",
+vscode-extension/src/test/suite/govkbCli.test.ts:127:    "--max-sessions",
+vscode-extension/src/test/suite/govkbCli.test.ts:135:  const command = reviewMemoryCommand({ ...defaultSettings(), defaultDryRun: false }, "/repo");
+vscode-extension/src/test/suite/govkbCli.test.ts:156:    "--lookback-days",
+vscode-extension/src/test/suite/govkbCli.test.ts:158:    "--max-sessions",
+vscode-extension/src/test/suite/govkbCli.test.ts:177:    "--inventory-json",
+vscode-extension/src/test/suite/govkbCli.test.ts:178:    "--lookback-days",
+vscode-extension/src/test/suite/govkbCli.test.ts:180:    "--max-sessions",
+vscode-extension/src/test/suite/govkbCli.test.ts:187:  assert.equal(command.args.includes("--progress-jsonl"), true);
+vscode-extension/src/test/suite/settings.test.ts:23:      reviewMaxSessions: -2,
+vscode-extension/src/test/suite/settings.test.ts:31:  assert.equal(settings.reviewMaxSessions, 5);

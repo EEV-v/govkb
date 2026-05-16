@@ -13,13 +13,13 @@ export function reportRows(reports?: ReportSummary[], reportRoot?: string): Tree
         label: "Create a fresh report",
         description: "Run dry-run review",
         tooltip: "Run memory review in dry-run mode and refresh summaries after it finishes.",
-        command: { command: "govkb.reviewMemoryDryRun", title: "GovKB: Review Memory Dry Run" }
+        command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       },
       {
         label: "Apply memory review",
         description: "Run actual review",
         tooltip: "Run memory review in apply mode and refresh summaries after it finishes.",
-        command: { command: "govkb.reviewMemoryApply", title: "GovKB: Review Memory Apply" }
+        command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
       }
     ];
   }
@@ -29,22 +29,22 @@ export function reportRows(reports?: ReportSummary[], reportRoot?: string): Tree
         label: "No report summaries found",
         description: "Run dry-run review",
         tooltip: reportRoot ? `Looked in ${reportRoot}` : "No project report folder has been resolved yet.",
-        command: { command: "govkb.reviewMemoryDryRun", title: "GovKB: Review Memory Dry Run" }
+        command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       },
       {
         label: "Apply memory review",
         description: "Run actual review",
         tooltip: "Run memory review in apply mode and refresh summaries after it finishes.",
-        command: { command: "govkb.reviewMemoryApply", title: "GovKB: Review Memory Apply" }
+        command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
       }
     ];
   }
-  return reports.map((report) => ({
+  return reports.slice(0, 5).map((report) => ({
     label: report.createdAt ?? report.path.split("/").pop() ?? report.path,
     description: [
+      `learned ${report.sessions.learned}`,
       `failed ${report.sessions.failed}`,
       `deferred ${report.sessions.deferred}`,
-      `learned ${report.sessions.learned}`,
       `candidates ${report.sessions.stagedCandidates}`
     ].join(", "),
     tooltip: [

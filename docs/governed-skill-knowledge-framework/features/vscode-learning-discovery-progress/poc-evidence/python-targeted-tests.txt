@@ -1,0 +1,12 @@
+test_review_memory_forwards_inventory_and_progress_flags (tests.test_review_memory_command.ReviewMemoryCommandTests.test_review_memory_forwards_inventory_and_progress_flags) ... ok
+test_review_memory_passes_low_cost_classifier_options (tests.test_review_memory_command.ReviewMemoryCommandTests.test_review_memory_passes_low_cost_classifier_options) ... ok
+test_review_memory_runs_python_script_with_current_interpreter (tests.test_review_memory_command.ReviewMemoryCommandTests.test_review_memory_runs_python_script_with_current_interpreter) ... ok
+test_packaged_scheduler_falls_back_to_file_only_sessions_when_index_is_missing (tests.test_memory_review.MemoryReviewHelperTests.test_packaged_scheduler_falls_back_to_file_only_sessions_when_index_is_missing) ... ok
+test_packaged_scheduler_skips_index_rows_without_session_files (tests.test_memory_review.MemoryReviewHelperTests.test_packaged_scheduler_skips_index_rows_without_session_files) ... ok
+test_packaged_scheduler_defers_sessions_when_classifier_times_out (tests.test_memory_review.MemoryReviewHelperTests.test_packaged_scheduler_defers_sessions_when_classifier_times_out) ... ok
+test_packaged_scheduler_defers_sessions_when_classifier_hits_usage_limit (tests.test_memory_review.MemoryReviewHelperTests.test_packaged_scheduler_defers_sessions_when_classifier_hits_usage_limit) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.019s
+
+OK

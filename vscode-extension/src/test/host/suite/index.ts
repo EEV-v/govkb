@@ -6,16 +6,28 @@ const expectedCommands = [
   "govkb.oneClickApply",
   "govkb.validateProject",
   "govkb.showStatus",
+  "govkb.refreshCapabilities",
+  "govkb.openCapability",
+  "govkb.convertSkillToGoverned",
+  "govkb.renameGovernedSkill",
+  "govkb.mergeGovernedSkills",
+  "govkb.discoverLearning",
+  "govkb.reviewLearningDryRun",
+  "govkb.reviewLearningApply",
   "govkb.reviewMemoryDryRun",
   "govkb.reviewMemoryApply",
   "govkb.promoteAuto",
   "govkb.refreshPromotions",
   "govkb.openPromotion",
+  "govkb.openPromotionWorktree",
   "govkb.showPromotion",
   "govkb.markPromotionAccepted",
+  "govkb.applyPromotionToProject",
+  "govkb.finalizeAcceptedPromotion",
   "govkb.markPromotionRejected",
   "govkb.archivePromotion",
   "govkb.listCandidates",
+  "govkb.openCandidate",
   "govkb.refreshReports",
   "govkb.openLatestReport",
   "govkb.openReport",
@@ -38,4 +50,3 @@ export async function run(): Promise<void> {
   assert.equal(config.get("autoRefreshOnStartup"), true);
   assert.equal(config.get("monitorIntervalSeconds"), 0);
 }
-

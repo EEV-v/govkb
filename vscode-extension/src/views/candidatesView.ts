@@ -13,35 +13,44 @@ export function candidateRows(candidates?: CandidateSummary[]): TreeRow[] {
         label: "Discover candidates",
         description: "Run dry-run review",
         tooltip: "Dry-run review can stage candidate proposals without memory mutation.",
-        command: { command: "govkb.reviewMemoryDryRun", title: "GovKB: Review Memory Dry Run" }
+        command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       },
       {
         label: "Apply memory review",
         description: "Run actual review",
         tooltip: "Run memory review in apply mode, updating eligible memory and staging candidates.",
-        command: { command: "govkb.reviewMemoryApply", title: "GovKB: Review Memory Apply" }
+        command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
       }
     ];
   }
   if (candidates.length === 0) {
     return [
       {
-        label: "No candidates found",
-        description: "Run dry-run review",
-        tooltip: "No staged candidates were returned by the GovKB CLI.",
-        command: { command: "govkb.reviewMemoryDryRun", title: "GovKB: Review Memory Dry Run" }
-      },
-      {
-        label: "Apply memory review",
-        description: "Run actual review",
-        tooltip: "Run memory review in apply mode to update eligible memory and stage candidates.",
-        command: { command: "govkb.reviewMemoryApply", title: "GovKB: Review Memory Apply" }
+        label: "No new skill candidates",
+        description: "existing skills learned instead",
+        tooltip: "No staged governed-skill candidates were returned by the GovKB CLI."
       }
     ];
   }
-  return candidates.map((candidate) => ({
-    label: candidate.id,
-    description: `${candidate.status}, ${candidate.occurrences} occurrence(s), ${candidate.activationState}`,
-    tooltip: candidate.suggestedCapabilityId ? `Suggested: ${candidate.suggestedCapabilityId}` : candidate.path
-  }));
+  return [
+    {
+      label: "Candidates need triage",
+      description: `${candidates.length} staged`,
+      tooltip: "Open each candidate draft and decide whether it is useful enough to keep, edit, or remove before promotion."
+    },
+    ...candidates.map((candidate) => ({
+      label: `Review candidate: ${candidate.suggestedCapabilityId ?? candidate.id}`,
+      description: `${candidate.status}, ${candidate.occurrences} occurrence${candidate.occurrences === 1 ? "" : "s"}`,
+      tooltip: [
+        `Candidate id: ${candidate.id}`,
+        candidate.suggestedCapabilityId ? `Suggested skill: ${candidate.suggestedCapabilityId}` : undefined,
+        `Activation: ${candidate.activationState}`,
+        candidate.path
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      command: { command: "govkb.openCandidate", title: "GovKB: Open Candidate Draft", arguments: [candidate] },
+      contextValue: "govkb.candidate"
+    }))
+  ];
 }
