@@ -7,18 +7,21 @@ export function reportRows(reports?: ReportSummary[], reportRoot?: string): Tree
         label: "Report summaries not loaded",
         description: "Refresh reports",
         tooltip: "Read aggregate memory-review report summaries from the configured Codex home.",
+        icon: "refresh",
         command: { command: "govkb.refreshReports", title: "GovKB: Refresh Reports" }
       },
       {
         label: "Create a fresh report",
         description: "Run dry-run review",
         tooltip: "Run memory review in dry-run mode and refresh summaries after it finishes.",
+        icon: "debug-alt",
         command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       },
       {
         label: "Apply memory review",
         description: "Run actual review",
         tooltip: "Run memory review in apply mode and refresh summaries after it finishes.",
+        icon: "play",
         command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
       }
     ];
@@ -29,12 +32,14 @@ export function reportRows(reports?: ReportSummary[], reportRoot?: string): Tree
         label: "No report summaries found",
         description: "Run dry-run review",
         tooltip: reportRoot ? `Looked in ${reportRoot}` : "No project report folder has been resolved yet.",
+        icon: "search",
         command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       },
       {
         label: "Apply memory review",
         description: "Run actual review",
         tooltip: "Run memory review in apply mode and refresh summaries after it finishes.",
+        icon: "play",
         command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
       }
     ];
@@ -55,6 +60,7 @@ export function reportRows(reports?: ReportSummary[], reportRoot?: string): Tree
       .filter(Boolean)
       .join("\n"),
     command: { command: "govkb.openReport", title: "GovKB: Open Report", arguments: [report.path] },
+    icon: report.sessions.failed > 0 ? "warning" : "file-text",
     contextValue: "govkb.report"
   }));
 }

@@ -380,6 +380,7 @@ export interface TreeRow {
   label: string;
   description?: string;
   tooltip?: string;
+  icon?: string;
   command?: {
     command: string;
     title: string;

@@ -15,7 +15,7 @@ const status: StatusPayload = {
   project: { id: "demo-project", currentRelease: "unreleased", gitRevision: "abc", governedDirty: false, governedStatus: [] },
   validation: { status: "ok", warnings: [], errors: [] },
   kbHealth: { warnings: [], suggestedRemediation: null },
-  capabilities: [{ id: "project-knowledge-steward", name: "Project Knowledge Steward", governed: true }],
+  capabilities: [{ id: "project-knowledge-steward", name: "Project Knowledge Steward", governed: true, memoryEnabled: true }],
   adapters: ["codex"],
   releases: [],
   installState: {
@@ -47,12 +47,14 @@ test("statusRows summarize project health", () => {
   const rows = statusRows(status);
   assert.equal(rows[0].label, "demo-project");
   assert.equal(rows[0].description, "ok, 1 governed skill(s)");
+  assert.equal(rows[0].icon, "project");
   assert.equal(rows.find((row) => row.label === "Learned updates")?.description, "current");
 });
 
 test("statusRows provide first-open actions", () => {
   const rows = statusRows();
   assert.equal(rows[0].label, "Project status not loaded");
+  assert.equal(rows[0].icon, "pulse");
   assert.equal(rows[0].command?.command, "govkb.showStatus");
   assert.equal(rows[1].command?.command, "govkb.oneClickSetup");
 });
@@ -110,8 +112,10 @@ test("statusRows show promotion action when learned memory is pending", () => {
 test("capabilityRows summarize capabilities", () => {
   const rows = capabilityRows(status.capabilities);
   assert.equal(rows[0].label, "Governed skills");
+  assert.equal(rows[0].icon, "book");
   assert.equal(rows[1].command?.command, "govkb.convertSkillToGoverned");
   assert.equal(rows[2].label, "project-knowledge-steward");
+  assert.equal(rows[2].icon, "symbol-method");
   assert.equal(rows[2].command?.command, "govkb.openCapability");
   assert.equal(rows[2].contextValue, "govkb.capability");
 });
@@ -135,6 +139,7 @@ test("candidateRows summarize candidates", () => {
   ]);
   assert.equal(rows[0].label, "Candidates need triage");
   assert.equal(rows[0].description, "1 staged");
+  assert.equal(rows[0].icon, "warning");
   assert.equal(rows[1].label, "Review candidate: backend-local-stack-workflow");
   assert.equal(rows[1].description, "ready-for-review, 2 occurrences");
   assert.equal(rows[1].command?.command, "govkb.openCandidate");
@@ -156,6 +161,7 @@ test("reportRows summarize report counts", () => {
     }
   ]);
   assert.equal(rows[0].description, "learned 0, failed 1, deferred 0, candidates 0");
+  assert.equal(rows[0].icon, "warning");
   assert.equal(rows[0].command?.command, "govkb.openReport");
   assert.equal(rows[0].contextValue, "govkb.report");
 });
@@ -169,6 +175,7 @@ test("reportRows provide refresh actions before reports load", () => {
 test("learningRows show discovery action before inventory loads", () => {
   const rows = learningRows({ status });
   assert.equal(rows[0].label, "Learning");
+  assert.equal(rows[0].icon, "lightbulb");
   assert.equal(rows[1].command?.command, "govkb.discoverLearning");
 });
 
@@ -279,6 +286,7 @@ test("promotionRows summarize promotion lifecycle state", () => {
   ]);
   assert.equal(rows[0].label, "1. Open learning review");
   assert.equal(rows[0].description, "1 skill file ready");
+  assert.equal(rows[0].icon, "eye");
   assert.equal(rows[0].command?.command, "govkb.openPromotion");
   assert.equal(rows[0].contextValue, "govkb.promotion.ready");
   assert.equal(rows[1].label, "2. Accept reviewed updates");
@@ -305,6 +313,7 @@ test("promotionRows show accepted promotions as ready to finalize", () => {
   ]);
   assert.equal(rows[0].label, "Next: finalize accepted learning updates");
   assert.match(rows[0].description ?? "", /applies without commit/);
+  assert.equal(rows[0].icon, "git-merge");
   assert.equal(rows[0].command?.command, "govkb.finalizeAcceptedPromotion");
   assert.equal(rows[0].contextValue, "govkb.promotion.accepted");
 });

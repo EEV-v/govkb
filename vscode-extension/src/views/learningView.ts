@@ -41,7 +41,8 @@ function learningNextStepRow(
         "After reading it, accept or reject the review in Promotions.",
         "Accepted reviews can then be finalized in the active project without committing."
       ].join("\n"),
-      command: { command: "govkb.openPromotion", title: "GovKB: Open Promotion Digest", arguments: [promotion] }
+      command: { command: "govkb.openPromotion", title: "GovKB: Open Promotion Digest", arguments: [promotion] },
+      icon: "eye"
     };
   }
   if (promotion?.state === "accepted") {
@@ -55,7 +56,8 @@ function learningNextStepRow(
         command: "govkb.finalizeAcceptedPromotion",
         title: "GovKB: Finalize Accepted Learning Updates",
         arguments: [promotion]
-      }
+      },
+      icon: "git-merge"
     };
   }
   if (promotion?.state === "applied" && isPromotionPendingCommit(promotion, status)) {
@@ -63,6 +65,7 @@ function learningNextStepRow(
       label: "Next: commit governed updates",
       description: "review git diff",
       tooltip: "The promotion was applied to the active project. Review and commit .governed changes through normal git flow.",
+      icon: "repo-commit",
       command: { command: "govkb.showStatus", title: "GovKB: Show Status" }
     };
   }
@@ -71,6 +74,7 @@ function learningNextStepRow(
       label: "Next: create a review worktree",
       description: `${pending.pendingCount} learned update${pending.pendingCount === 1 ? "" : "s"}`,
       tooltip: "Create an isolated review for learned local memory updates before applying them to the governed package.",
+      icon: "git-pull-request-create",
       command: { command: "govkb.promoteAuto", title: "GovKB: Auto Promote Learned Updates" }
     };
   }
@@ -78,6 +82,7 @@ function learningNextStepRow(
     label: "Next: review another session batch",
     description: inventory ? `${inventory.sessions.selectedBeforeLimit} available` : "discover sessions first",
     tooltip: "Run a bounded dry run or apply run to classify more sessions.",
+    icon: inventory ? "debug-alt" : "search",
     command: inventory
       ? { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       : { command: "govkb.discoverLearning", title: "GovKB: Discover Learning Opportunities" }
@@ -96,6 +101,7 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
     label: "Learning",
     description: status ? `${status.capabilities.length} target(s)` : "status not loaded",
     tooltip: status?.projectRoot ?? "Run status or discover learning for the selected project.",
+    icon: "lightbulb",
     command: { command: "govkb.discoverLearning", title: "GovKB: Discover Learning Opportunities" }
   });
   rows.push(learningNextStepRow(latestPromotion, status, pending, inventory));
@@ -105,12 +111,14 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
       label: "Session inventory not loaded",
       description: "Discover learning",
       tooltip: "Run read-only inventory before AI classification.",
+      icon: "search",
       command: { command: "govkb.discoverLearning", title: "GovKB: Discover Learning Opportunities" }
     });
   } else {
     rows.push({
       label: "Sessions",
       description: `${inventory.sessions.selectedForReview} selected, ${inventory.sessions.selectedBeforeLimit} available`,
+      icon: "list-tree",
       tooltip: [
         `Total discovered: ${inventory.sessions.totalDiscovered}`,
         `Lookback days: ${inventory.lookbackDays ?? "default"}`,
@@ -127,13 +135,15 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
     rows.push({
       label: "Active review",
       description: current ? `${current.sessionId}: ${current.status}` : "starting",
-      tooltip: current?.reason ?? current?.threadName ?? "Review is running."
+      tooltip: current?.reason ?? current?.threadName ?? "Review is running.",
+      icon: "sync"
     });
   } else if (run?.summary) {
     rows.push({
       label: "Last review",
       description: `${run.summary.reviewed} reviewed, ${run.summary.existingSkillUpdates} learned, ${run.summary.failed} failed`,
-      tooltip: `deferred ${run.summary.deferred}, staged ${run.summary.staged}, candidates ${run.summary.stagedCandidates}`
+      tooltip: `deferred ${run.summary.deferred}, staged ${run.summary.staged}, candidates ${run.summary.stagedCandidates}`,
+      icon: run.summary.failed > 0 ? "warning" : "checklist"
     });
   }
 
@@ -155,7 +165,8 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
         command: "govkb.openPromotion",
         title: "GovKB: Open Promotion Digest",
         arguments: [latestPromotion]
-      }
+      },
+      icon: "git-merge"
     });
   } else if (latestPromotion) {
     const finalizedDescription =
@@ -169,6 +180,7 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
           ? `${finalizedDescription}, ${hiddenPromotionDuplicates} duplicate worktree(s) hidden`
           : finalizedDescription,
       tooltip: `Open ${latestPromotion.runId}, then accept or reject the reviewed governed changes in Promotions.`,
+      icon: latestPromotion.state === "applied" && !isPromotionPendingCommit(latestPromotion, status) ? "pass" : "eye",
       command: { command: "govkb.openPromotion", title: "GovKB: Open Promotion Digest", arguments: [latestPromotion] }
     });
   } else if (pending?.available) {
@@ -176,19 +188,22 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
       label: "Promote learned updates",
       description: `${pending.pendingCount} pending`,
       tooltip: pending.items.map((item) => `${item.capabilityId}: ${item.additions} addition(s)`).join("\n"),
+      icon: "git-pull-request-create",
       command: { command: "govkb.promoteAuto", title: "GovKB: Auto Promote Learned Updates" }
     });
   } else {
     rows.push({
       label: "Learned updates",
       description: "none pending",
-      tooltip: "No local memory updates are waiting for governed promotion."
+      tooltip: "No local memory updates are waiting for governed promotion.",
+      icon: "pass"
     });
   }
 
   rows.push({
     label: candidates && candidates.length > 0 ? "New skill candidates need triage" : "New skill candidates",
     description: candidates && candidates.length > 0 ? `${candidates.length} staged` : "none",
+    icon: candidates && candidates.length > 0 ? "warning" : "pass",
     tooltip:
       candidates && candidates.length === 0
         ? "No new governed skill candidates. This run learned into existing capabilities."
@@ -204,6 +219,7 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
         ? "none"
         : "not loaded",
     tooltip: latestReport?.path ?? "Refresh reports after a dry-run or apply run.",
+    icon: latestReport ? "file-text" : "refresh",
     command: latestReportCommand(reports)
   });
 
@@ -212,12 +228,14 @@ export function learningRows(input: LearningRowsInput = {}): TreeRow[] {
       label: "Review next batch",
       description: inventory ? `${inventory.recommendedBatch.maxSessions} session(s)` : "use settings",
       tooltip: "Dry-run writes report and patch previews without applying memory.",
+      icon: "debug-alt",
       command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
     });
     rows.push({
       label: "Apply learning",
       description: "updates local memory",
       tooltip: "Apply mode can update local memory and stage governed candidates through the CLI.",
+      icon: "play",
       command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
     });
   }

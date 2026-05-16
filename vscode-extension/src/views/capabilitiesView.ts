@@ -11,12 +11,14 @@ export function capabilityRows(capabilities?: CapabilitySummary[], governedRoot?
         label: "Governed skills not loaded",
         description: "Run Show Status",
         tooltip: "Governed skills are loaded from govkb status --json.",
+        icon: "book",
         command: { command: "govkb.showStatus", title: "GovKB: Show Status" }
       },
       {
         label: "Convert one skill",
         description: "Choose source skill",
         tooltip: "Convert one chosen local Codex skill name, folder, or SKILL.md file into a governed capability package.",
+        icon: "new-folder",
         command: { command: "govkb.convertSkillToGoverned", title: "GovKB: Convert One Existing Skill To Governed" }
       }
     ];
@@ -27,12 +29,14 @@ export function capabilityRows(capabilities?: CapabilitySummary[], governedRoot?
         label: "No governed skills",
         description: "Run setup",
         tooltip: "Initialize or repair the governed package through the GovKB CLI.",
+        icon: "warning",
         command: { command: "govkb.oneClickSetup", title: "GovKB: One-Click Setup Current Project" }
       },
       {
         label: "Convert one skill",
         description: "Choose source skill",
         tooltip: "Convert one chosen local Codex skill name, folder, or SKILL.md file into a governed capability package.",
+        icon: "new-folder",
         command: { command: "govkb.convertSkillToGoverned", title: "GovKB: Convert One Existing Skill To Governed" }
       }
     ];
@@ -42,12 +46,14 @@ export function capabilityRows(capabilities?: CapabilitySummary[], governedRoot?
       label: "Governed skills",
       description: `${capabilities.length} available`,
       tooltip: "Open, rename, merge, or convert governed skills from this view.",
+      icon: "book",
       command: { command: "govkb.refreshCapabilities", title: "GovKB: Refresh Governed Skills" }
     },
     {
       label: "Convert one skill",
       description: "Choose source skill",
       tooltip: "Convert one chosen local Codex skill name, folder, or SKILL.md file into a governed capability package.",
+      icon: "new-folder",
       command: { command: "govkb.convertSkillToGoverned", title: "GovKB: Convert One Existing Skill To Governed" }
     },
     ...capabilities.map((capability) => {
@@ -70,6 +76,7 @@ export function capabilityRows(capabilities?: CapabilitySummary[], governedRoot?
           .filter(Boolean)
           .join("\n"),
         command: { command: "govkb.openCapability", title: "GovKB: Open Governed Skill", arguments: [capability] },
+        icon: capability.memoryEnabled ? "symbol-method" : "file",
         contextValue: "govkb.capability"
       };
     })

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import * as vscode from "vscode";
 
 const expectedCommands = [
+  "govkb.openHome",
   "govkb.oneClickSetup",
   "govkb.oneClickApply",
   "govkb.validateProject",

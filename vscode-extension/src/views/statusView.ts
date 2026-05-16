@@ -62,18 +62,21 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
         label: "Project status not loaded",
         description: "Run Show Status",
         tooltip: "Read the selected workspace through govkb status --json.",
+        icon: "pulse",
         command: { command: "govkb.showStatus", title: "GovKB: Show Status" }
       },
       {
         label: "New project setup",
         description: "Run One-Click Setup",
         tooltip: "Initialize the selected workspace through the GovKB CLI.",
+        icon: "rocket",
         command: { command: "govkb.oneClickSetup", title: "GovKB: One-Click Setup Current Project" }
       },
       {
         label: "Troubleshooting",
         description: "Open output",
         tooltip: "Show the GovKB output channel.",
+        icon: "output",
         command: { command: "govkb.openOutput", title: "GovKB: Open Output" }
       }
     ];
@@ -88,6 +91,7 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
     {
       label: status.project.id ?? "Project",
       description: `${validationSummary}, ${capabilitySummary}`,
+      icon: validationErrors > 0 ? "error" : "project",
       tooltip: [
         status.projectRoot,
         `Current release: ${status.project.currentRelease}`,
@@ -100,12 +104,14 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
       label: "Codex skills",
       description: status.installState.codex.status === "present" ? skillUpdates : status.installState.codex.status,
       tooltip: skillUpdateTooltip(status),
+      icon: status.installState.codex.status === "present" ? "cloud" : "cloud-upload",
       command: skillUpdateCommand(status)
     },
     {
       label: "Learned updates",
       description: skillUpdates,
       tooltip: skillUpdateTooltip(status),
+      icon: status.skillUpdates.pendingLocalMemory.available ? "lightbulb" : "pass",
       command: skillUpdateCommand(status)
     }
   ];
@@ -113,7 +119,8 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
     rows.push({
       label: "KB health warnings",
       description: String(kbWarnings),
-      tooltip: status.kbHealth.warnings.map((message) => `${message.location}: ${message.message}`).join("\n")
+      tooltip: status.kbHealth.warnings.map((message) => `${message.location}: ${message.message}`).join("\n"),
+      icon: "warning"
     });
   }
   if (validationErrors > 0) {
@@ -121,6 +128,7 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
       label: "Validation details",
       description: "Open output",
       tooltip: status.validation.errors.map((message) => `${message.location}: ${message.message}`).join("\n"),
+      icon: "error",
       command: { command: "govkb.openOutput", title: "GovKB: Open Output" }
     });
   }
@@ -129,6 +137,7 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
       label: "Suggested remediation",
       description: status.kbHealth.suggestedRemediation,
       tooltip: "Run setup to refresh governed project scaffolding and starter knowledge.",
+      icon: "tools",
       command: { command: "govkb.oneClickSetup", title: "GovKB: One-Click Setup Current Project" }
     });
   }
@@ -137,6 +146,7 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
       label: "Codex materialization",
       description: "Run One-Click Apply",
       tooltip: status.installState.codex.statePath ?? "Apply the governed package to the configured Codex home.",
+      icon: "cloud-upload",
       command: { command: "govkb.oneClickApply", title: "GovKB: One-Click Apply Current Project" }
     });
   }

@@ -14,6 +14,7 @@ test(".vscodeignore excludes local private and generated state", () => {
 test("package manifest contributes report and output affordances", () => {
   const manifest = JSON.parse(readFileSync(join(__dirname, "..", "..", "..", "package.json"), "utf8"));
   const commands = new Set(manifest.contributes.commands.map((command: { command: string }) => command.command));
+  assert.equal(commands.has("govkb.openHome"), true);
   assert.equal(commands.has("govkb.refreshReports"), true);
   assert.equal(commands.has("govkb.openLatestReport"), true);
   assert.equal(commands.has("govkb.openOutput"), true);
@@ -26,6 +27,8 @@ test("package manifest contributes report and output affordances", () => {
   assert.equal(commands.has("govkb.applyPromotionToProject"), true);
   assert.equal(commands.has("govkb.finalizeAcceptedPromotion"), true);
   assert.equal(commands.has("govkb.openCandidate"), true);
+  const homeView = manifest.contributes.views.govkb.find((view: { id: string }) => view.id === "govkb.home");
+  assert.equal(homeView?.type, "webview");
   assert.equal(manifest.contributes.views.govkb.some((view: { id: string }) => view.id === "govkb.learning"), true);
   assert.equal(manifest.contributes.views.govkb.some((view: { id: string }) => view.id === "govkb.candidates"), true);
   assert.equal(manifest.contributes.views.govkb.some((view: { id: string }) => view.id === "govkb.reports"), true);

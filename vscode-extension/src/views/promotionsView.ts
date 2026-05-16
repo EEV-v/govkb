@@ -95,6 +95,19 @@ function promotionContextValue(promotion: PromotionSummary): string {
   return "govkb.promotion";
 }
 
+function promotionIcon(promotion: PromotionSummary, status?: StatusPayload): string {
+  if (promotion.state === "ready-for-review") {
+    return "eye";
+  }
+  if (promotion.state === "accepted") {
+    return "git-merge";
+  }
+  if (promotion.state === "applied") {
+    return isPromotionPendingCommit(promotion, status) ? "repo-commit" : "pass";
+  }
+  return "git-pull-request";
+}
+
 function promotionLabel(promotion: PromotionSummary, status?: StatusPayload): string {
   if (promotion.state === "accepted") {
     return "Next: finalize accepted learning updates";
@@ -171,6 +184,7 @@ function reviewDecisionRows(promotion: PromotionSummary): TreeRow[] {
       description: "then finalize",
       tooltip:
         "Use this after reading the digest. Accepting records your review decision and makes finalization available.",
+      icon: "pass",
       command: {
         command: "govkb.markPromotionAccepted",
         title: "GovKB: Mark Promotion Accepted",
@@ -182,6 +196,7 @@ function reviewDecisionRows(promotion: PromotionSummary): TreeRow[] {
       label: "Reject this review",
       description: "keep project unchanged",
       tooltip: "Reject this promotion if the digest is wrong, noisy, or should not become governed knowledge.",
+      icon: "error",
       command: {
         command: "govkb.markPromotionRejected",
         title: "GovKB: Mark Promotion Rejected",
@@ -199,12 +214,14 @@ export function promotionRows(promotions?: PromotionSummary[], status?: StatusPa
         label: "Promotions not loaded",
         description: "Refresh promotions",
         tooltip: "Read isolated promotion review worktrees through govkb promotions list --json.",
+        icon: "refresh",
         command: { command: "govkb.refreshPromotions", title: "GovKB: Refresh Promotions" }
       },
       {
         label: "Check learned updates",
         description: "Run auto promote",
         tooltip: "Create an isolated promotion worktree for safe local memory updates.",
+        icon: "git-pull-request-create",
         command: { command: "govkb.promoteAuto", title: "GovKB: Auto Promote Learned Updates" }
       }
     ];
@@ -215,6 +232,7 @@ export function promotionRows(promotions?: PromotionSummary[], status?: StatusPa
         label: "No isolated promotions found",
         description: "Run auto promote",
         tooltip: "No isolated promotion review worktrees were found for this project.",
+        icon: "git-pull-request-create",
         command: { command: "govkb.promoteAuto", title: "GovKB: Auto Promote Learned Updates" }
       }
     ];
@@ -227,6 +245,7 @@ export function promotionRows(promotions?: PromotionSummary[], status?: StatusPa
       description: changeDescription(promotion, hidden, status),
       tooltip: promotionTooltip(promotion),
       command: primaryCommand(promotion),
+      icon: promotionIcon(promotion, status),
       contextValue: promotionContextValue(promotion)
     },
     ...reviewDecisionRows(promotion)
@@ -235,7 +254,8 @@ export function promotionRows(promotions?: PromotionSummary[], status?: StatusPa
     rows.push({
       label: "Duplicate review worktrees",
       description: `${hiddenTotal} hidden`,
-      tooltip: "Repeated learning apply runs created equivalent isolated review worktrees for the same governed changes. They are hidden here because one lifecycle decision covers the equivalent change set."
+      tooltip: "Repeated learning apply runs created equivalent isolated review worktrees for the same governed changes. They are hidden here because one lifecycle decision covers the equivalent change set.",
+      icon: "layers"
     });
   }
   return rows;

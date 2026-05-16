@@ -25,6 +25,8 @@ import { codexHomeForReports, discoverReportSummaries, reportRootForProject } fr
 import { withResolvedGovkbRuntime } from "./runtimeDiscovery";
 import { resolveSettings } from "./settings";
 import { ensureWorkspaceTrusted } from "./trust";
+import { buildHomeModel, HomeAction } from "./homeState";
+import { GovkbHomeWebviewProvider } from "./homeWebview";
 import {
   Blocker,
   CandidateSummary,
@@ -233,6 +235,9 @@ export function activate(context: vscode.ExtensionContext): void {
   const candidatesProvider = new SimpleTreeProvider();
   const promotionsProvider = new SimpleTreeProvider();
   const reportsProvider = new SimpleTreeProvider();
+  const homeProvider = new GovkbHomeWebviewProvider(async (action) => {
+    await runHomeAction(action);
+  });
   let latestStatus: StatusPayload | undefined;
   let latestPromotions: PromotionSummary[] = [];
   let latestPromotionsProjectRoot: string | undefined;
@@ -243,6 +248,10 @@ export function activate(context: vscode.ExtensionContext): void {
   let latestLearningRun: LearningRunState | undefined;
   let monitor: NodeJS.Timeout | undefined;
 
+  async function runHomeAction(action: HomeAction): Promise<void> {
+    await vscode.commands.executeCommand(action.command, ...(action.arguments ?? []));
+  }
+
   function rememberProjectRoot(projectRoot: string): void {
     void context.workspaceState.update(LAST_PROJECT_ROOT_KEY, projectRoot);
   }
@@ -250,6 +259,20 @@ export function activate(context: vscode.ExtensionContext): void {
   function refreshLearningView(): void {
     learningProvider.setRows(
       learningRows({
+        status: latestStatus,
+        inventory: latestLearningInventory,
+        run: latestLearningRun,
+        reports: latestReports,
+        candidates: latestCandidates,
+        promotions: latestPromotions
+      })
+    );
+    refreshHomeView();
+  }
+
+  function refreshHomeView(): void {
+    homeProvider.update(
+      buildHomeModel({
         status: latestStatus,
         inventory: latestLearningInventory,
         run: latestLearningRun,
@@ -1041,6 +1064,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     output,
+    vscode.window.registerWebviewViewProvider("govkb.home", homeProvider),
     vscode.window.registerTreeDataProvider("govkb.status", statusProvider),
     vscode.window.registerTreeDataProvider("govkb.capabilities", capabilitiesProvider),
     vscode.window.registerTreeDataProvider("govkb.learning", learningProvider),
@@ -1053,6 +1077,14 @@ export function activate(context: vscode.ExtensionContext): void {
   const commandState = new CommandRunState();
 
   context.subscriptions.push(
+    vscode.commands.registerCommand("govkb.openHome", async () => {
+      await vscode.commands.executeCommand("workbench.view.extension.govkb");
+      try {
+        await vscode.commands.executeCommand("govkb.home.focus");
+      } catch {
+        // VS Code creates focus commands for contributed views in supported hosts.
+      }
+    }),
     vscode.commands.registerCommand("govkb.openOutput", () => output.show(true)),
     vscode.commands.registerCommand("govkb.refreshCapabilities", async () => {
       await runWithProgress(commandState, output, "refreshCapabilities", "Refresh Governed Skills", async (progress) => {
@@ -1388,6 +1420,7 @@ export function activate(context: vscode.ExtensionContext): void {
   candidatesProvider.setRows(candidateRows());
   promotionsProvider.setRows(promotionRows());
   reportsProvider.setRows(reportRows());
+  refreshHomeView();
 
   async function refreshProjectSurface(projectRoot: string): Promise<void> {
     const status = await refreshStatus(projectRoot, false);

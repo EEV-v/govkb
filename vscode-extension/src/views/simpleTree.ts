@@ -17,6 +17,9 @@ export class SimpleTreeProvider implements vscode.TreeDataProvider<TreeRow> {
     item.tooltip = element.tooltip;
     item.command = element.command as vscode.Command | undefined;
     item.contextValue = element.contextValue;
+    if (element.icon) {
+      item.iconPath = new vscode.ThemeIcon(element.icon);
+    }
     return item;
   }
 

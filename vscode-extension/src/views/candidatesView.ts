@@ -7,18 +7,21 @@ export function candidateRows(candidates?: CandidateSummary[]): TreeRow[] {
         label: "Candidates not loaded",
         description: "Run List Candidates",
         tooltip: "Read staged candidate summaries through govkb candidates list --json.",
+        icon: "list-tree",
         command: { command: "govkb.listCandidates", title: "GovKB: List Candidates" }
       },
       {
         label: "Discover candidates",
         description: "Run dry-run review",
         tooltip: "Dry-run review can stage candidate proposals without memory mutation.",
+        icon: "search",
         command: { command: "govkb.reviewLearningDryRun", title: "GovKB: Review Learning Dry Run" }
       },
       {
         label: "Apply memory review",
         description: "Run actual review",
         tooltip: "Run memory review in apply mode, updating eligible memory and staging candidates.",
+        icon: "play",
         command: { command: "govkb.reviewLearningApply", title: "GovKB: Review Learning Apply" }
       }
     ];
@@ -28,7 +31,8 @@ export function candidateRows(candidates?: CandidateSummary[]): TreeRow[] {
       {
         label: "No new skill candidates",
         description: "existing skills learned instead",
-        tooltip: "No staged governed-skill candidates were returned by the GovKB CLI."
+        tooltip: "No staged governed-skill candidates were returned by the GovKB CLI.",
+        icon: "pass"
       }
     ];
   }
@@ -36,7 +40,8 @@ export function candidateRows(candidates?: CandidateSummary[]): TreeRow[] {
     {
       label: "Candidates need triage",
       description: `${candidates.length} staged`,
-      tooltip: "Open each candidate draft and decide whether it is useful enough to keep, edit, or remove before promotion."
+      tooltip: "Open each candidate draft and decide whether it is useful enough to keep, edit, or remove before promotion.",
+      icon: "warning"
     },
     ...candidates.map((candidate) => ({
       label: `Review candidate: ${candidate.suggestedCapabilityId ?? candidate.id}`,
@@ -50,6 +55,7 @@ export function candidateRows(candidates?: CandidateSummary[]): TreeRow[] {
         .filter(Boolean)
         .join("\n"),
       command: { command: "govkb.openCandidate", title: "GovKB: Open Candidate Draft", arguments: [candidate] },
+      icon: "file-text",
       contextValue: "govkb.candidate"
     }))
   ];
