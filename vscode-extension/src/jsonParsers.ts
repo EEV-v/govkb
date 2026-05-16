@@ -2,6 +2,7 @@ import {
   CandidatesPayload,
   ConversionPayload,
   LearningInventoryPayload,
+  PromotionCleanupPayload,
   PromotionsPayload,
   ReportSummaryPayload,
   StatusPayload
@@ -219,4 +220,43 @@ export function parsePromotionsPayload(text: string): PromotionsPayload {
     assertArray(promotion.status, `promotions[${index}].status`);
   }
   return payload as unknown as PromotionsPayload;
+}
+
+export function parsePromotionCleanupPayload(text: string): PromotionCleanupPayload {
+  const payload = JSON.parse(text) as unknown;
+  if (!isObject(payload)) {
+    throw new Error("invalid promotion cleanup payload: expected object");
+  }
+  if (payload.schemaVersion !== 1) {
+    throw new Error("invalid promotion cleanup payload: unsupported schemaVersion");
+  }
+  assertString(payload.projectRoot, "projectRoot");
+  assertString(payload.codexHome, "codexHome");
+  assertString(payload.projectId, "projectId");
+  assertString(payload.promotionsRoot, "promotionsRoot");
+  assertString(payload.mode, "mode");
+  const eligible = assertArray(payload.eligible, "eligible");
+  const skipped = assertArray(payload.skipped, "skipped");
+  for (const [section, items] of [["eligible", eligible], ["skipped", skipped]] as const) {
+    for (const [index, item] of items.entries()) {
+      if (!isObject(item)) {
+        throw new Error(`invalid ${section}[${index}]: expected object`);
+      }
+      assertString(item.runId, `${section}[${index}].runId`);
+      assertString(item.state, `${section}[${index}].state`);
+      assertString(item.worktreeRoot, `${section}[${index}].worktreeRoot`);
+      assertString(item.metadataPath, `${section}[${index}].metadataPath`);
+      assertBoolean(item.eligible, `${section}[${index}].eligible`);
+      assertString(item.reason, `${section}[${index}].reason`);
+    }
+  }
+  const removed = assertArray(payload.removed, "removed");
+  for (const [index, item] of removed.entries()) {
+    assertString(item, `removed[${index}]`);
+  }
+  const metadataUpdated = assertArray(payload.metadataUpdated, "metadataUpdated");
+  for (const [index, item] of metadataUpdated.entries()) {
+    assertString(item, `metadataUpdated[${index}]`);
+  }
+  return payload as unknown as PromotionCleanupPayload;
 }

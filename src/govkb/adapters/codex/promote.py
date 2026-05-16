@@ -422,11 +422,22 @@ def _write_digest(project_root: Path, result: PromotionResult, run_id: str, repo
         lines.append("- None")
     accepted_additions = _accepted_additions_by_capability(result.codex_home, result.project_id)
     lines.extend(["", "## Review Scope"])
-    lines.append("- Review only `New Additions To Review` before accepting or rejecting this promotion.")
+    lines.append("- Review only `New Additions To Review` when deciding whether this promotion adds acceptable new memory.")
     lines.append(
         "- `Previously Accepted Carry-Forward` entries are included because they have not been applied to the active governed package yet."
     )
     lines.append("- Accepting or applying this promotion still acts on the combined change set shown in this digest.")
+    lines.extend(
+        [
+            "",
+            "## Acceptance Criteria",
+            "",
+            "- Each new addition is durable project knowledge that should improve future sessions.",
+            "- Each new addition belongs to the listed capability and configured memory section.",
+            "- Each new addition is backed by the originating local memory diff, session evidence, or explicit user acceptance.",
+            "- Reject additions that summarize a one-off task, expose sensitive/private data, depend on local machine state, or duplicate existing memory.",
+        ]
+    )
     lines.extend(["", "## New Additions To Review"])
     promoted_items = [item for item in result.items if item.promoted]
     if not promoted_items:

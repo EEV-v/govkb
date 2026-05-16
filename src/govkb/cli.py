@@ -258,6 +258,18 @@ def build_parser() -> argparse.ArgumentParser:
     promotions_archive_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
     promotions_archive_parser.set_defaults(handler=run_promotions)
 
+    promotions_cleanup_parser = promotions_subparsers.add_parser(
+        "cleanup",
+        help="Preview or remove non-actionable isolated promotion review worktrees.",
+    )
+    promotions_cleanup_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    promotions_cleanup_parser.add_argument("--codex-home", type=Path, help="Codex home override for promotion worktree inspection.")
+    promotions_cleanup_parser.add_argument("--preview", action="store_true", help="Show cleanup-eligible worktrees without changing files.")
+    promotions_cleanup_parser.add_argument("--apply", action="store_true", help="Remove eligible worktrees and mark lifecycle metadata cleaned.")
+    promotions_cleanup_parser.add_argument("--reason", help="Human-readable cleanup reason recorded in lifecycle metadata.")
+    promotions_cleanup_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for integrations.")
+    promotions_cleanup_parser.set_defaults(handler=run_promotions)
+
     create_parser = subparsers.add_parser("create", help="Scaffold governed objects.")
     create_subparsers = create_parser.add_subparsers(dest="create_target", required=True)
 

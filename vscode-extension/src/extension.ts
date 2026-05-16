@@ -5,6 +5,7 @@ import { promotionShowCommand, runCliCommand, statusJsonCommand, validateCommand
 import {
   applyPromotionToProject,
   archivePromotion,
+  cleanupPromotions,
   convertSkillToGoverned,
   discoverLearning,
   listCandidates,
@@ -18,7 +19,7 @@ import {
   runOneClickSetup
 } from "./flows";
 import { parseStatusPayload } from "./jsonParsers";
-import { discoverLocalSkills, LocalSkillSummary } from "./localSkills";
+import { discoverLocalSkills, governedSkillNamesForConversion, LocalSkillSummary } from "./localSkills";
 import { resolveProjectRoot } from "./projectSelection";
 import { defaultPromotionReviewReason, normalizePromotionReviewReason } from "./promotionReview";
 import { codexHomeForReports, discoverReportSummaries, reportRootForProject } from "./reports";
@@ -58,6 +59,7 @@ const RUN_APPLY_REVIEW_ACTION = "Run GovKB: Review Memory Apply";
 const REFRESH_REPORTS_ACTION = "GovKB: Refresh Reports";
 const RUN_AUTO_PROMOTE_ACTION = "GovKB: Auto Promote Learned Updates";
 const REFRESH_PROMOTIONS_ACTION = "GovKB: Refresh Promotions";
+const PREVIEW_PROMOTION_CLEANUP_ACTION = "GovKB: Preview Promotion Cleanup";
 const MARK_PROMOTION_ACCEPTED_ACTION = "GovKB: Mark Promotion Accepted";
 const CONVERT_SKILL_ACTION = "GovKB: Convert One Existing Skill To Governed";
 const ENTER_SKILL_MANUALLY_ACTION = "Enter skill name or path manually";
@@ -100,6 +102,10 @@ async function handleAction(output: vscode.OutputChannel, selected: string | und
   }
   if (selected === REFRESH_PROMOTIONS_ACTION) {
     await vscode.commands.executeCommand("govkb.refreshPromotions");
+    return;
+  }
+  if (selected === PREVIEW_PROMOTION_CLEANUP_ACTION) {
+    await vscode.commands.executeCommand("govkb.previewPromotionCleanup");
     return;
   }
   if (selected === MARK_PROMOTION_ACCEPTED_ACTION) {
@@ -372,23 +378,6 @@ export function activate(context: vscode.ExtensionContext): void {
       .replace(/^-+|-+$/g, "");
   }
 
-  function governedSkillNamesForConversion(status?: StatusPayload): string[] {
-    const names = new Set<string>();
-    for (const capability of status?.capabilities ?? []) {
-      names.add(capability.id);
-      names.add(capability.name);
-      for (const alias of capability.aliases ?? []) {
-        names.add(alias);
-      }
-    }
-    for (const materialized of status?.installState.codex.materializedCapabilities ?? []) {
-      if (materialized.materializedSkillId) {
-        names.add(materialized.materializedSkillId);
-      }
-    }
-    return [...names].filter(Boolean);
-  }
-
   async function enterSkillSourceManually(): Promise<string | undefined> {
     return vscode.window.showInputBox({
       title: "Enter one Codex skill",
@@ -414,7 +403,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
     const manualItem = {
       label: ENTER_SKILL_MANUALLY_ACTION,
-      description: "Use a skill not shown here",
+      description: "Use only when the source is not listed",
       detail: "Enter a skill name, folder path, or SKILL.md path.",
       alwaysShow: true,
       manual: true
@@ -430,7 +419,10 @@ export function activate(context: vscode.ExtensionContext): void {
     ];
     const picked = await vscode.window.showQuickPick(items, {
       title: "Choose one Codex skill to convert",
-      placeHolder: skills.length > 0 ? "Only the selected skill will be converted." : "No CODEX_HOME/skills packages found.",
+      placeHolder:
+        skills.length > 0
+          ? "Already governed and GovKB-generated skills are hidden by default."
+          : "No non-governed CODEX_HOME/skills packages found.",
       matchOnDescription: true,
       matchOnDetail: true,
       ignoreFocusOut: true
@@ -442,6 +434,51 @@ export function activate(context: vscode.ExtensionContext): void {
       return enterSkillSourceManually();
     }
     return "source" in picked ? picked.source : undefined;
+  }
+
+  async function chooseTargetCapabilityId(defaultId?: string): Promise<string | undefined | null> {
+    async function enterId(value?: string): Promise<string | undefined | null> {
+      const capabilityIdInput = await vscode.window.showInputBox({
+        title: "Target governed skill id",
+        prompt: "Leave the suggested id or enter a lower kebab-case capability id",
+        value,
+        ignoreFocusOut: true,
+        validateInput: (input) => (!input.trim() || normalizeCapabilityInput(input) === input.trim() ? undefined : "Use lower kebab-case.")
+      });
+      if (capabilityIdInput === undefined) {
+        return null;
+      }
+      return capabilityIdInput.trim() || undefined;
+    }
+    if (!defaultId) {
+      return enterId(undefined);
+    }
+    const picked = await vscode.window.showQuickPick(
+      [
+        {
+          label: `Use ${defaultId}`,
+          description: "recommended",
+          targetId: defaultId
+        },
+        {
+          label: "Edit target id",
+          description: "choose a different governed skill id",
+          edit: true
+        }
+      ],
+      {
+        title: "Target governed skill id",
+        placeHolder: "Use the suggested id unless you need a different package name.",
+        ignoreFocusOut: true
+      }
+    );
+    if (!picked) {
+      return null;
+    }
+    if ("edit" in picked && picked.edit) {
+      return enterId(defaultId);
+    }
+    return "targetId" in picked ? picked.targetId : defaultId;
   }
 
   async function runConvertSkillToGovernedCommand(skillInput?: string): Promise<void> {
@@ -464,17 +501,10 @@ export function activate(context: vscode.ExtensionContext): void {
     const trimmedSkill = skill.trim();
     const defaultName = path.basename(trimmedSkill) === "SKILL.md" ? path.basename(path.dirname(trimmedSkill)) : path.basename(trimmedSkill);
     const defaultId = normalizeCapabilityInput(defaultName) || undefined;
-    const capabilityIdInput = await vscode.window.showInputBox({
-      title: "Target governed skill id",
-      prompt: "Leave the suggested id or enter a lower kebab-case capability id",
-      value: defaultId,
-      ignoreFocusOut: true,
-      validateInput: (value) => (!value.trim() || normalizeCapabilityInput(value) === value.trim() ? undefined : "Use lower kebab-case.")
-    });
-    if (capabilityIdInput === undefined) {
+    const capabilityId = await chooseTargetCapabilityId(defaultId);
+    if (capabilityId === null) {
       return;
     }
-    const capabilityId = capabilityIdInput.trim() || undefined;
     await runWithProgress(commandState, output, "convertSkillToGoverned", "Convert One Existing Skill To Governed", async (progress) => {
       progress.report({ message: "Previewing conversion..." });
       const preview = await convertSkillToGoverned(settings, projectRoot, trimmedSkill, capabilityId, runner, false);
@@ -896,6 +926,72 @@ export function activate(context: vscode.ExtensionContext): void {
     }
   }
 
+  async function runPromotionCleanupPreviewCommand(): Promise<void> {
+    const projectRoot = latestPromotionsProjectRoot ?? latestStatus?.projectRoot ?? (await selectProjectRoot(output));
+    if (!projectRoot) {
+      return;
+    }
+    let cleanup: Awaited<ReturnType<typeof cleanupPromotions>>["promotionCleanup"];
+    await runWithProgress(commandState, output, "previewPromotionCleanup", "Preview Promotion Cleanup", async (progress) => {
+      progress.report({ message: "Finding stale promotion worktrees..." });
+      const result = await cleanupPromotions(settingsFromVscode(), projectRoot, runner, false);
+      cleanup = result.promotionCleanup;
+      if (!result.ok && result.blocker) {
+        await showBlocker(output, result.blocker);
+      }
+    });
+    if (!cleanup) {
+      return;
+    }
+    output.show(true);
+    if (cleanup.eligible.length === 0) {
+      const selected = await vscode.window.showInformationMessage("No cleanup-eligible GovKB promotion worktrees were found.", OPEN_OUTPUT_ACTION);
+      await handleAction(output, selected);
+      return;
+    }
+    const selected = await vscode.window.showInformationMessage(
+      `GovKB found ${cleanup.eligible.length} cleanup-eligible promotion worktree(s).`,
+      "Clean up worktrees",
+      OPEN_OUTPUT_ACTION
+    );
+    if (selected === "Clean up worktrees") {
+      await vscode.commands.executeCommand("govkb.cleanupPromotions");
+    } else {
+      await handleAction(output, selected);
+    }
+  }
+
+  async function runPromotionCleanupApplyCommand(): Promise<void> {
+    if (!(await requireTrusted(output))) {
+      return;
+    }
+    const projectRoot = latestPromotionsProjectRoot ?? latestStatus?.projectRoot ?? (await selectProjectRoot(output));
+    if (!projectRoot) {
+      return;
+    }
+    const decision = await vscode.window.showWarningMessage(
+      "Remove cleanup-eligible GovKB promotion worktrees? Sidecar lifecycle metadata is preserved and active ready or accepted reviews are skipped.",
+      "Clean up worktrees",
+      "Cancel"
+    );
+    if (decision !== "Clean up worktrees") {
+      output.appendLine("GovKB: promotion cleanup cancelled.");
+      return;
+    }
+    await runWithProgress(commandState, output, "cleanupPromotions", "Cleanup Finished Promotions", async (progress) => {
+      progress.report({ message: "Removing non-actionable promotion worktrees..." });
+      const result = await cleanupPromotions(settingsFromVscode(), projectRoot, runner, true, "Cleaned from VS Code UI.");
+      if (!result.ok && result.blocker) {
+        await showBlocker(output, result.blocker);
+        return;
+      }
+      const removed = result.promotionCleanup?.removed.length ?? 0;
+      output.appendLine(`GovKB: cleaned ${removed} promotion worktree${removed === 1 ? "" : "s"}.`);
+      await refreshPromotionsForProject(projectRoot);
+      await refreshLearningForProject(projectRoot, false);
+    });
+  }
+
   async function preparePromotionFinalization(
     promotion?: PromotionSummary | string
   ): Promise<{ projectRoot: string; promotion: PromotionSummary } | undefined> {
@@ -1144,6 +1240,12 @@ export function activate(context: vscode.ExtensionContext): void {
         }
         await archiveSelectedPromotion(promotion);
       });
+    }),
+    vscode.commands.registerCommand("govkb.previewPromotionCleanup", async () => {
+      await runPromotionCleanupPreviewCommand();
+    }),
+    vscode.commands.registerCommand("govkb.cleanupPromotions", async () => {
+      await runPromotionCleanupApplyCommand();
     }),
     vscode.commands.registerCommand("govkb.applyPromotionToProject", async (promotion?: PromotionSummary | string) => {
       await runFinalizeAcceptedPromotionCommand(promotion);

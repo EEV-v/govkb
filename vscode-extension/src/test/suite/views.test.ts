@@ -109,12 +109,34 @@ test("statusRows show promotion action when learned memory is pending", () => {
   assert.equal(learned?.command?.command, "govkb.promoteAuto");
 });
 
-test("capabilityRows summarize capabilities", () => {
-  const rows = capabilityRows(status.capabilities);
+test("capabilityRows summarize capabilities with readable names", () => {
+  const rows = capabilityRows([
+    {
+      id: "project-knowledge-steward",
+      name: "Project Knowledge Steward",
+      governed: true,
+      memoryEnabled: true,
+      lifecycleState: "active",
+      migrationStatus: null,
+      aliases: ["project knowledge steward"],
+      description: "Cold-start project knowledge keeper.",
+      memoryTargets: [
+        {
+          name: "main",
+          path: "references/long-term-memory.md",
+          absolutePath: "/repo/.governed/capabilities/project-knowledge-steward/references/long-term-memory.md",
+          sections: ["Stable Workflows"]
+        }
+      ]
+    }
+  ]);
   assert.equal(rows[0].label, "Governed skills");
   assert.equal(rows[0].icon, "book");
   assert.equal(rows[1].command?.command, "govkb.convertSkillToGoverned");
-  assert.equal(rows[2].label, "project-knowledge-steward");
+  assert.equal(rows[2].label, "Project Knowledge Steward");
+  assert.equal(rows[2].description, "project-knowledge-steward, active, memory");
+  assert.match(rows[2].tooltip ?? "", /Cold-start project knowledge keeper/);
+  assert.match(rows[2].tooltip ?? "", /Memory targets:/);
   assert.equal(rows[2].icon, "symbol-method");
   assert.equal(rows[2].command?.command, "govkb.openCapability");
   assert.equal(rows[2].contextValue, "govkb.capability");

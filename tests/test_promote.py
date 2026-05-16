@@ -127,8 +127,8 @@ class PromoteCommandTests(unittest.TestCase):
             original_repo = repo_memory.read_text(encoding="utf-8")
             local_memory.write_text(
                 original_repo.replace(
-                    "- Add stable workflow steps here after bootstrap or repeated evidence.\n\n## Commands And Verification",
-                    "- Add stable workflow steps here after bootstrap or repeated evidence.\n- Prefer the root compose pair for routine local work.\n## Commands And Verification",
+                    "- TODO: add recurring workflow steps after bootstrap or repeated evidence.\n\n## Commands And Verification",
+                    "- TODO: add recurring workflow steps after bootstrap or repeated evidence.\n- Prefer the root compose pair for routine local work.\n## Commands And Verification",
                 ),
                 encoding="utf-8",
             )

@@ -232,6 +232,96 @@ class PromotionsCommandTests(unittest.TestCase):
             ).stdout
             self.assertEqual(active.strip(), "")
 
+    def test_mark_reviewed_same_decision_is_idempotent_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+
+            first_output = io.StringIO()
+            with redirect_stdout(first_output):
+                first_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="mark-reviewed",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        decision="accepted",
+                        reason="Ready to apply.",
+                        reviewer=None,
+                        json=True,
+                    )
+                )
+            self.assertEqual(first_exit, 0)
+            first = json.loads(first_output.getvalue())
+            metadata_path = Path(first["promotion"]["metadataPath"])
+            metadata_before = metadata_path.read_text(encoding="utf-8")
+
+            second_output = io.StringIO()
+            with redirect_stdout(second_output):
+                second_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="mark-reviewed",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        decision="accepted",
+                        reason="Ready to apply again.",
+                        reviewer="other@example.local",
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(second_exit, 0)
+            second = json.loads(second_output.getvalue())
+            self.assertTrue(second["noop"])
+            self.assertEqual(second["message"], "promotion is already accepted")
+            self.assertEqual(metadata_path.read_text(encoding="utf-8"), metadata_before)
+
+    def test_mark_rejected_same_decision_is_idempotent_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+
+            first_output = io.StringIO()
+            with redirect_stdout(first_output):
+                first_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="mark-reviewed",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        decision="rejected",
+                        reason="Not durable.",
+                        reviewer=None,
+                        json=True,
+                    )
+                )
+            self.assertEqual(first_exit, 0)
+            first = json.loads(first_output.getvalue())
+            metadata_path = Path(first["promotion"]["metadataPath"])
+            metadata_before = metadata_path.read_text(encoding="utf-8")
+
+            second_output = io.StringIO()
+            with redirect_stdout(second_output):
+                second_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="mark-reviewed",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        decision="rejected",
+                        reason="Reject again.",
+                        reviewer=None,
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(second_exit, 0)
+            second = json.loads(second_output.getvalue())
+            self.assertTrue(second["noop"])
+            self.assertEqual(second["message"], "promotion is already rejected")
+            self.assertEqual(metadata_path.read_text(encoding="utf-8"), metadata_before)
+
     def test_apply_accepted_promotion_copies_changes_without_commit(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root, codex_home, lesson = _scaffold_promoted_worktree(temp_dir)
@@ -279,6 +369,60 @@ class PromotionsCommandTests(unittest.TestCase):
             ).stdout
             self.assertIn("long-term-memory.md", active_status)
             self.assertNotIn("nothing to commit", active_status)
+
+    def test_apply_already_applied_promotion_is_idempotent_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+
+            run_promotions(
+                argparse.Namespace(
+                    promotion_action="mark-reviewed",
+                    promotion=promotion["runId"],
+                    project_root=project_root,
+                    codex_home=codex_home,
+                    decision="accepted",
+                    reason="Ready to apply.",
+                    reviewer=None,
+                    json=True,
+                )
+            )
+            first_output = io.StringIO()
+            with redirect_stdout(first_output):
+                first_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="apply",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        force=False,
+                        json=True,
+                    )
+                )
+            self.assertEqual(first_exit, 0)
+            first = json.loads(first_output.getvalue())
+            metadata_path = Path(first["promotion"]["metadataPath"])
+            metadata_before = metadata_path.read_text(encoding="utf-8")
+
+            second_output = io.StringIO()
+            with redirect_stdout(second_output):
+                second_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="apply",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        force=False,
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(second_exit, 0)
+            second = json.loads(second_output.getvalue())
+            self.assertTrue(second["noop"])
+            self.assertEqual(second["message"], "promotion is already applied")
+            self.assertEqual(second["appliedFiles"], [])
+            self.assertEqual(metadata_path.read_text(encoding="utf-8"), metadata_before)
 
     def test_apply_accepted_promotion_allows_non_overlapping_governed_changes(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -406,6 +550,47 @@ class PromotionsCommandTests(unittest.TestCase):
             self.assertEqual(archived["state"], "archived")
             self.assertEqual(archived["archive"]["reason"], "Handled outside GovKB.")
             self.assertTrue(worktree_root.is_dir())
+
+    def test_archive_already_archived_promotion_is_idempotent_noop(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root, codex_home, _ = _scaffold_promoted_worktree(temp_dir)
+            promotion = build_promotions_payload(project_root, codex_home)["promotions"][0]
+
+            first_output = io.StringIO()
+            with redirect_stdout(first_output):
+                first_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="archive",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        reason="Handled outside GovKB.",
+                        json=True,
+                    )
+                )
+            self.assertEqual(first_exit, 0)
+            first = json.loads(first_output.getvalue())
+            metadata_path = Path(first["promotion"]["metadataPath"])
+            metadata_before = metadata_path.read_text(encoding="utf-8")
+
+            second_output = io.StringIO()
+            with redirect_stdout(second_output):
+                second_exit = run_promotions(
+                    argparse.Namespace(
+                        promotion_action="archive",
+                        promotion=promotion["runId"],
+                        project_root=project_root,
+                        codex_home=codex_home,
+                        reason="Archive again.",
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(second_exit, 0)
+            second = json.loads(second_output.getvalue())
+            self.assertTrue(second["noop"])
+            self.assertEqual(second["message"], "promotion is already archived")
+            self.assertEqual(metadata_path.read_text(encoding="utf-8"), metadata_before)
 
 
 if __name__ == "__main__":

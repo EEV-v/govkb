@@ -152,6 +152,19 @@ export function promotionArchiveCommand(
   return buildGovkbCommand(settings, [...withCodexHome(args, settings.codexHome), "--json"]);
 }
 
+export function promotionCleanupCommand(
+  settings: GovkbSettings,
+  projectRoot: string,
+  apply = false,
+  reason?: string
+): CliCommand {
+  const args = ["promotions", "cleanup", projectRoot, apply ? "--apply" : "--preview"];
+  if (reason) {
+    args.push("--reason", reason);
+  }
+  return buildGovkbCommand(settings, [...withCodexHome(args, settings.codexHome), "--json"]);
+}
+
 export function candidatesJsonCommand(settings: GovkbSettings, projectRoot: string): CliCommand {
   return buildGovkbCommand(settings, ["candidates", "list", projectRoot, "--json"]);
 }

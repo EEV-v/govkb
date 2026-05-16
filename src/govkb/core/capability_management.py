@@ -287,7 +287,16 @@ def _merged_instruction_text(source: CapabilityContract, report_path: Path) -> s
     return (
         f"## Merged Capability: {source.capability_name}\n\n"
         f"This capability absorbed `{source.capability_id}` through governed merge review. "
+        f"Use the merged guidance only when it fits this capability's contract and current user request. "
         f"The merge report is `{report_path.relative_to(report_path.parents[3]).as_posix()}`.\n\n"
+        "### Outcome\n\n"
+        f"Preserve reusable behavior from `{source.capability_id}` while treating this capability's contract, "
+        "memory targets, and authority rules as the active source of truth.\n\n"
+        "### Success Criteria\n\n"
+        "- Apply merged guidance only when it is durable, source-grounded, and within the surviving capability scope.\n"
+        "- Prefer specific instructions from this capability when merged source wording conflicts or is narrower.\n"
+        "- Keep session-specific, local-only, private, or unsafe source details out of future memory updates.\n"
+        "- Use the merge report as the audit trail for what moved and what still needs review.\n\n"
         "### Source Guidance\n\n"
         f"{source_instructions or 'No source instructions were present.'}"
     )
@@ -403,6 +412,14 @@ def _merge_report_text(
         f"- Target `{target.capability_id}` now carries aliases and reusable guidance from `{source.capability_id}`.",
         f"- Source capability package `{source.capability_id}` was removed from active governed capabilities.",
         "- Review the active project diff before committing.",
+        "- Treat this report as the audit trail for future questions about the merge.",
+        "",
+        "## Review Checklist",
+        "",
+        "- Confirm the surviving capability contract still describes the combined scope.",
+        "- Confirm merged instructions do not depend on one-off session state, private workspace details, or local-only paths.",
+        "- Confirm copied memory bullets are durable, sourced, and assigned to a configured target section.",
+        "- Re-run governed validation after any manual edits prompted by this report.",
         "",
         "## Memory Additions",
         "",

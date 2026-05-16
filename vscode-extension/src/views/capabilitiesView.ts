@@ -4,6 +4,39 @@ function capabilityPath(capability: CapabilitySummary, governedRoot?: string): s
   return capability.path ?? (governedRoot ? `${governedRoot}/capabilities/${capability.id}` : undefined);
 }
 
+function capabilityDisplayName(capability: CapabilitySummary): string {
+  return capability.name?.trim() || capability.id;
+}
+
+function capabilityDescription(capability: CapabilitySummary): string {
+  const parts = [
+    capabilityDisplayName(capability) !== capability.id ? capability.id : undefined,
+    capability.lifecycleState ?? undefined,
+    capability.memoryEnabled ? "memory" : "no memory",
+    capability.requiresExplicitAcceptance ? "explicit acceptance" : undefined,
+    capability.migrationStatus ? capability.migrationStatus : undefined
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+function capabilityTooltip(capability: CapabilitySummary, sourcePath?: string): string {
+  const memoryTargets = (capability.memoryTargets ?? [])
+    .map((target) => `${target.name}: ${target.path}${target.sections.length > 0 ? ` (${target.sections.length} section(s))` : ""}`)
+    .join("\n");
+  return [
+    capabilityDisplayName(capability),
+    capability.description,
+    `ID: ${capability.id}`,
+    capability.lifecycleState ? `State: ${capability.lifecycleState}` : undefined,
+    capability.migrationStatus ? `Migration: ${capability.migrationStatus}` : undefined,
+    capability.aliases && capability.aliases.length > 0 ? `Aliases: ${capability.aliases.join(", ")}` : undefined,
+    memoryTargets ? `Memory targets:\n${memoryTargets}` : undefined,
+    sourcePath ? `Path: ${sourcePath}` : undefined
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function capabilityRows(capabilities?: CapabilitySummary[], governedRoot?: string): TreeRow[] {
   if (!capabilities) {
     return [
@@ -59,22 +92,9 @@ export function capabilityRows(capabilities?: CapabilitySummary[], governedRoot?
     ...capabilities.map((capability) => {
       const sourcePath = capabilityPath(capability, governedRoot);
       return {
-        label: capability.id,
-        description: [
-          capability.memoryEnabled ? "memory" : "no memory",
-          capability.lifecycleState ?? undefined,
-          capability.migrationStatus ? `migration ${capability.migrationStatus}` : undefined
-        ]
-          .filter(Boolean)
-          .join(", "),
-        tooltip: [
-          capability.name,
-          capability.description,
-          capability.aliases && capability.aliases.length > 0 ? `Aliases: ${capability.aliases.join(", ")}` : undefined,
-          sourcePath
-        ]
-          .filter(Boolean)
-          .join("\n"),
+        label: capabilityDisplayName(capability),
+        description: capabilityDescription(capability),
+        tooltip: capabilityTooltip(capability, sourcePath),
         command: { command: "govkb.openCapability", title: "GovKB: Open Governed Skill", arguments: [capability] },
         icon: capability.memoryEnabled ? "symbol-method" : "file",
         contextValue: "govkb.capability"

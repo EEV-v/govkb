@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   applyPromotionToProject,
   archivePromotion,
+  cleanupPromotions,
   convertSkillToGoverned,
   discoverLearning,
   listPromotions,
@@ -77,6 +78,38 @@ const promotionsJson = JSON.stringify({
   ]
 });
 
+const promotionCleanupJson = JSON.stringify({
+  schemaVersion: 1,
+  projectRoot: "/repo",
+  codexHome: "/tmp/codex-home",
+  projectId: "repo",
+  promotionsRoot: "/tmp/codex-home/memories/govkb/worktrees/repo",
+  mode: "preview",
+  eligible: [
+    {
+      runId: "run-1",
+      state: "applied",
+      worktreeRoot: "/tmp/codex-home/memories/govkb/worktrees/repo/run-1",
+      metadataPath: "/tmp/codex-home/memories/govkb/promotions/repo/run-1.json",
+      eligible: true,
+      reason: "applied promotion worktree is cleanup-eligible"
+    }
+  ],
+  skipped: [
+    {
+      runId: "run-2",
+      state: "ready-for-review",
+      worktreeRoot: "/tmp/codex-home/memories/govkb/worktrees/repo/run-2",
+      metadataPath: "/tmp/codex-home/memories/govkb/promotions/repo/run-2.json",
+      eligible: false,
+      reason: "promotion still needs review"
+    }
+  ],
+  removed: [],
+  metadataUpdated: [],
+  error: null
+});
+
 const learningInventoryJson = JSON.stringify({
   schemaVersion: 1,
   projectRoot: "/repo",
@@ -124,6 +157,8 @@ class FakeRunner implements CliRunner {
     const stdout =
       command.args[0] === "promotions" && command.args[1] === "list"
         ? promotionsJson
+        : command.args[0] === "promotions" && command.args[1] === "cleanup"
+          ? promotionCleanupJson
         : command.args[0] === "convert"
           ? conversionJson
         : command.args.includes("--inventory-json")
@@ -265,6 +300,33 @@ test("promotion lifecycle updates refresh list after sidecar mutation", async ()
     runner.commands.map((command) => command.args.slice(0, 2).join(" ")),
     ["promotions mark-reviewed", "promotions list", "promotions apply", "promotions list", "promotions archive", "promotions list"]
   );
+});
+
+test("promotion cleanup flow parses preview payload without refreshing lifecycle list", async () => {
+  const runner = new FakeRunner();
+  const result = await cleanupPromotions(defaultSettings(), "/repo", runner, false);
+  assert.equal(result.ok, true);
+  assert.equal(result.promotionCleanup?.eligible.length, 1);
+  assert.equal(result.promotionCleanup?.skipped[0].state, "ready-for-review");
+  assert.deepEqual(
+    runner.commands.map((command) => command.args.slice(0, 4).join(" ")),
+    ["promotions cleanup /repo --preview"]
+  );
+});
+
+test("promotion cleanup apply passes reason to lifecycle cleanup command", async () => {
+  const runner = new FakeRunner();
+  const result = await cleanupPromotions(defaultSettings(), "/repo", runner, true, "Cleaned from tests.");
+  assert.equal(result.ok, true);
+  assert.deepEqual(runner.commands[0].args.slice(0, 7), [
+    "promotions",
+    "cleanup",
+    "/repo",
+    "--apply",
+    "--reason",
+    "Cleaned from tests.",
+    "--json"
+  ]);
 });
 
 test("governed skill management flows run expected CLI commands", async () => {

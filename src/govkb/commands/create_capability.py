@@ -69,15 +69,15 @@ def _memory_text(capability_id: str) -> str:
     return (
         f"# {title}\n\n"
         "## Working Agreement\n\n"
-        "- TODO: add durable guidance for this capability.\n\n"
+        "- TODO: define the capability scope, users, default behavior, and boundaries.\n\n"
         "## Stable Workflows\n\n"
-        "- Add stable workflow steps here after bootstrap or repeated evidence.\n\n"
+        "- TODO: add recurring workflow steps after bootstrap or repeated evidence.\n\n"
         "## Commands And Verification\n\n"
-        "- Add durable verification commands here after bootstrap or repeated evidence.\n\n"
+        "- TODO: add durable validation commands, working directories, and evidence expectations.\n\n"
         "## Code And Docs Map\n\n"
-        "- Add repo-relative code and docs locations here after bootstrap or repeated evidence.\n\n"
+        "- TODO: add repo-relative code, test, and docs locations after bootstrap or repeated evidence.\n\n"
         "## Authority Rules\n\n"
-        "- Add authority rules here when one governed file should win over broader docs.\n"
+        "- TODO: add precedence rules for conflicts between governed files, docs, and local context.\n"
     )
 
 
@@ -85,11 +85,25 @@ def _instructions_text(capability_id: str) -> str:
     title = capability_id.replace("-", " ").title()
     return (
         f"# {title}\n\n"
-        "Use this governed capability when the task matches its routing contract.\n\n"
-        "## Load references first\n\n"
+        "Use this governed capability when the task matches its routing contract and stored memory.\n\n"
+        "## Load References First\n\n"
+        "- Read `capability.contract.toml` to confirm scope, routing hints, memory targets, and acceptance rules.\n"
         "- Always read `references/long-term-memory.md` before acting.\n\n"
+        "## Outcome\n\n"
+        "Complete the capability-specific workflow using durable governed knowledge. If the scaffold still contains placeholders, treat the capability as uninitialized and ground any work in repo evidence rather than assumptions.\n\n"
+        "## Success Criteria\n\n"
+        "- Work stays inside the contract scope and current user request.\n"
+        "- Stable instructions, user input, retrieved context, and tool results remain distinct.\n"
+        "- Durable claims are backed by repo files, governed memory, or explicit user acceptance.\n"
+        "- Secrets, credentials, private transcripts, customer data, and local-only machine details are not stored in memory.\n\n"
         "## Workflow\n\n"
-        "- TODO: describe the stable workflow for this capability.\n"
+        "- Confirm the request fits this capability before applying it.\n"
+        "- Use the configured memory sections as the source of durable workflow guidance.\n"
+        "- Inspect source artifacts when memory is missing, stale, or still scaffolded.\n"
+        "- Update governed memory only with reusable, evidence-backed facts assigned to configured sections.\n"
+        "- Run `govkb validate` after changing governed files.\n\n"
+        "## Output\n\n"
+        "- Return the completed result, evidence used, verification performed, and any blockers.\n"
     )
 
 
@@ -156,13 +170,13 @@ def _candidate_memory_text(candidate_root: Path, capability_id: str, candidate_d
             else:
                 lines.append("- Keep this capability focused on the reusable workflow captured by the activated candidate.")
         elif section == "Stable Workflows":
-            lines.append("- Use this section for recurring project workflow patterns observed across sessions.")
+            lines.append("- TODO: add recurring workflow steps only after candidate facts, bootstrap, or repeated repo evidence support them.")
         elif section == "Commands And Verification":
-            lines.append("- Use this section for durable validation commands, evidence expectations, and safety checks.")
+            lines.append("- TODO: add durable validation commands, working directories, evidence expectations, and safety checks.")
         elif section == "Code And Docs Map":
-            lines.append("- Use this section for durable repo-relative code, test, and docs locations.")
+            lines.append("- TODO: add repo-relative code, test, and docs locations that future sessions should inspect first.")
         else:
-            lines.append("- Use this section for durable authority rules when one governed source should win.")
+            lines.append("- TODO: add precedence rules for conflicts between governed files, docs, candidate facts, and local context.")
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 

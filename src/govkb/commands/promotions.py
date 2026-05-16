@@ -14,6 +14,7 @@ from govkb.core.ids import normalize_identifier
 from govkb.core.install_state import default_codex_home
 from govkb.core.promotion_lifecycle import applied_promotion_metadata
 from govkb.core.promotion_lifecycle import archived_promotion_metadata
+from govkb.core.promotion_lifecycle import cleaned_promotion_metadata
 from govkb.core.promotion_lifecycle import initial_promotion_metadata
 from govkb.core.promotion_lifecycle import promotion_metadata_path
 from govkb.core.promotion_lifecycle import promotion_project_key
@@ -191,6 +192,8 @@ def run_promotions(args) -> int:
         return _run_apply(args)
     if action == "archive":
         return _run_archive(args)
+    if action == "cleanup":
+        return _run_cleanup(args)
     print(f"error: unsupported promotions action: {action}", file=sys.stderr)
     return 1
 
@@ -212,6 +215,173 @@ def _run_list(args) -> int:
             f"branch={promotion.get('branch') or '<unknown>'} worktree={promotion['worktreeRoot']}"
         )
     return 0
+
+
+def _is_under_root(path: Path, root: Path) -> bool:
+    try:
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _cleanup_reason(promotion: dict[str, Any]) -> str | None:
+    state = str(promotion.get("state") or "")
+    if state in {"applied", "archived", "rejected", "clean"}:
+        return f"state is {state}"
+    if state == "cleaned":
+        return "already cleaned"
+    return None
+
+
+def _cleanup_item(
+    promotion: dict[str, Any],
+    *,
+    eligible: bool,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "runId": promotion.get("runId"),
+        "state": promotion.get("state"),
+        "worktreeRoot": promotion.get("worktreeRoot"),
+        "metadataPath": promotion.get("metadataPath"),
+        "eligible": eligible,
+        "reason": reason,
+    }
+
+
+def _remove_promotion_worktree(worktree_root: Path, active_project_root: Path) -> tuple[bool, str | None]:
+    git_root = _git_root(active_project_root)
+    if git_root is not None:
+        proc = subprocess.run(
+            ["git", "-C", str(git_root), "worktree", "remove", "--force", str(worktree_root)],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if proc.returncode == 0:
+            return True, None
+        detail = (proc.stderr or proc.stdout).strip()
+        if worktree_root.exists():
+            try:
+                shutil.rmtree(worktree_root)
+                return True, None
+            except OSError as error:
+                return False, f"git worktree remove failed: {detail}; fallback removal failed: {error}"
+        return True, None
+    try:
+        shutil.rmtree(worktree_root)
+    except OSError as error:
+        return False, str(error)
+    return True, None
+
+
+def build_promotion_cleanup_payload(
+    project_root: Path,
+    codex_home: Path | None = None,
+    *,
+    apply: bool = False,
+    reason: str | None = None,
+) -> dict[str, Any]:
+    """Preview or apply cleanup for non-actionable isolated promotion worktrees."""
+    payload = build_promotions_payload(project_root, codex_home)
+    promotions_root = Path(str(payload["promotionsRoot"])).resolve()
+    cleanup_reason_text = reason or "promotion cleanup"
+    result: dict[str, Any] = {
+        "schemaVersion": 1,
+        "projectRoot": payload["projectRoot"],
+        "codexHome": payload["codexHome"],
+        "projectId": payload["projectId"],
+        "promotionsRoot": str(promotions_root),
+        "mode": "apply" if apply else "preview",
+        "eligible": [],
+        "skipped": [],
+        "removed": [],
+        "metadataUpdated": [],
+        "error": None,
+    }
+
+    for promotion in payload["promotions"]:
+        cleanup_reason_value = _cleanup_reason(promotion)
+        if cleanup_reason_value is None:
+            result["skipped"].append(
+                _cleanup_item(
+                    promotion,
+                    eligible=False,
+                    reason="state is actionable; use review, reject, finalize, or archive first",
+                )
+            )
+            continue
+        worktree_root = Path(str(promotion["worktreeRoot"])).resolve()
+        if not _is_under_root(worktree_root, promotions_root):
+            result["skipped"].append(
+                _cleanup_item(
+                    promotion,
+                    eligible=False,
+                    reason="worktree path is outside the computed promotions root",
+                )
+            )
+            continue
+        if not worktree_root.is_dir():
+            result["skipped"].append(
+                _cleanup_item(
+                    promotion,
+                    eligible=False,
+                    reason="worktree path is already missing",
+                )
+            )
+            continue
+        result["eligible"].append(_cleanup_item(promotion, eligible=True, reason=cleanup_reason_value))
+
+    if not apply:
+        return result
+
+    for item in list(result["eligible"]):
+        worktree_root = Path(str(item["worktreeRoot"])).resolve()
+        ok, error = _remove_promotion_worktree(worktree_root, Path(str(payload["projectRoot"])).resolve())
+        if not ok:
+            item["eligible"] = False
+            item["reason"] = f"cleanup failed: {error}"
+            result["skipped"].append(item)
+            result["error"] = error or "cleanup failed"
+            continue
+        result["removed"].append(str(worktree_root))
+        metadata_path = Path(str(item["metadataPath"]))
+        existing = read_promotion_metadata(metadata_path)
+        if existing is None:
+            matching = next(
+                promotion for promotion in payload["promotions"] if str(promotion["runId"]) == str(item["runId"])
+            )
+            existing = _metadata_from_promotion(payload, matching)
+        write_promotion_metadata(
+            metadata_path,
+            cleaned_promotion_metadata(existing, removed_paths=[worktree_root], reason=cleanup_reason_text),
+        )
+        result["metadataUpdated"].append(str(metadata_path))
+    return result
+
+
+def _run_cleanup(args) -> int:
+    result = build_promotion_cleanup_payload(
+        Path(args.project_root),
+        getattr(args, "codex_home", None),
+        apply=getattr(args, "apply", False),
+        reason=getattr(args, "reason", None),
+    )
+    if getattr(args, "json", False):
+        print(json.dumps(result, indent=2, sort_keys=True))
+        return 1 if result["error"] else 0
+    action = "Removed" if result["mode"] == "apply" else "Would remove"
+    if not result["eligible"]:
+        print(f"No cleanup-eligible promotion worktrees found under {result['promotionsRoot']}")
+    else:
+        for item in result["eligible"]:
+            print(f"{action} {item['runId']}: {item['reason']} ({item['worktreeRoot']})")
+    if result["skipped"]:
+        print("Skipped:")
+        for item in result["skipped"]:
+            print(f"  {item['runId']}: {item['reason']}")
+    return 1 if result["error"] else 0
 
 
 def _run_show(args) -> int:
@@ -384,11 +554,22 @@ def build_promotion_apply_payload(
         "activeStatusBefore": [],
         "activeStatusAfter": [],
         "error": detail["error"],
+        "noop": False,
+        "message": None,
     }
     if promotion is None:
         return base
 
     state = str(promotion.get("state") or "")
+    if state == "applied" and not force:
+        active_project_root = Path(str(detail["projectRoot"])).resolve()
+        base["activeStatusBefore"] = _governed_status(active_project_root) or []
+        base["activeStatusAfter"] = list(base["activeStatusBefore"])
+        base["appliedFiles"] = []
+        base["noop"] = True
+        base["message"] = "promotion is already applied"
+        base["error"] = None
+        return base
     if state != "accepted" and not force:
         base["error"] = f"promotion must be accepted before apply; current state is {state or '<unknown>'}"
         return base
@@ -450,7 +631,15 @@ def build_promotion_apply_payload(
     base["appliedFiles"] = applied_files
     base["activeStatusAfter"] = _governed_status(active_project_root) or []
     base["error"] = None
+    base["message"] = f"applied {len(applied_files)} file(s)"
     return base
+
+
+def _detail_with_noop(detail: dict[str, Any], message: str) -> dict[str, Any]:
+    updated = dict(detail)
+    updated["noop"] = True
+    updated["message"] = message
+    return updated
 
 
 def _write_review_state(args, *, state: str) -> int:
@@ -463,6 +652,15 @@ def _write_review_state(args, *, state: str) -> int:
             print(f"error: {detail['error']}", file=sys.stderr)
         return 1
 
+    if promotion.get("state") == state:
+        result = _detail_with_noop(detail, f"promotion is already {state}")
+        if getattr(args, "json", False):
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(f"Promotion {promotion['runId']} is already {state}; no lifecycle metadata changed.")
+            print(f"Lifecycle metadata: {promotion['metadataPath']}")
+        return 0
+
     metadata_path = Path(str(promotion["metadataPath"]))
     existing = read_promotion_metadata(metadata_path) or _metadata_from_promotion(detail, promotion)
     updated = reviewed_promotion_metadata(
@@ -473,6 +671,8 @@ def _write_review_state(args, *, state: str) -> int:
     )
     write_promotion_metadata(metadata_path, updated)
     result = build_promotion_detail_payload(Path(args.project_root), str(promotion["runId"]), getattr(args, "codex_home", None))
+    result["noop"] = False
+    result["message"] = f"marked promotion as {state}"
     if getattr(args, "json", False):
         print(json.dumps(result, indent=2, sort_keys=True))
     else:
@@ -504,6 +704,13 @@ def _run_apply(args) -> int:
         print(f"error: {result['error']}", file=sys.stderr)
         return 1
     promotion = result["promotion"] or {}
+    if result.get("noop"):
+        print(f"Promotion {promotion.get('runId', args.promotion)} is already applied; no files were copied.")
+        if result["activeStatusAfter"]:
+            print("Active project git status:")
+            for line in result["activeStatusAfter"]:
+                print(f"  {line}")
+        return 0
     print(f"Applied promotion {promotion.get('runId', args.promotion)} into {result['projectRoot']}.")
     print("Git history unchanged; review and commit the active project changes through the normal project flow.")
     if result["appliedFiles"]:
@@ -527,11 +734,23 @@ def _run_archive(args) -> int:
             print(f"error: {detail['error']}", file=sys.stderr)
         return 1
 
+    if promotion.get("state") == "archived":
+        result = _detail_with_noop(detail, "promotion is already archived")
+        if getattr(args, "json", False):
+            print(json.dumps(result, indent=2, sort_keys=True))
+        else:
+            print(f"Promotion {promotion['runId']} is already archived; no lifecycle metadata changed.")
+            print(f"Lifecycle metadata: {promotion['metadataPath']}")
+            print("Git worktree and history unchanged.")
+        return 0
+
     metadata_path = Path(str(promotion["metadataPath"]))
     existing = read_promotion_metadata(metadata_path) or _metadata_from_promotion(detail, promotion)
     updated = archived_promotion_metadata(existing, reason=getattr(args, "reason", None))
     write_promotion_metadata(metadata_path, updated)
     result = build_promotion_detail_payload(Path(args.project_root), str(promotion["runId"]), getattr(args, "codex_home", None))
+    result["noop"] = False
+    result["message"] = "archived promotion"
     if getattr(args, "json", False):
         print(json.dumps(result, indent=2, sort_keys=True))
     else:

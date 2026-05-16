@@ -1,3 +1,4 @@
+import { actionDefinition, GovkbActionId } from "./actionRegistry";
 import {
   CandidateSummary,
   LearningInventoryPayload,
@@ -8,26 +9,7 @@ import {
 } from "./types";
 import { changedSkillCount, isPromotionPendingCommit, promotionGroups } from "./views/promotionsView";
 
-export type HomeActionId =
-  | "setup"
-  | "apply"
-  | "discoverLearning"
-  | "reviewLearningDryRun"
-  | "reviewLearningApply"
-  | "createReviewWorktree"
-  | "openPromotion"
-  | "acceptPromotion"
-  | "rejectPromotion"
-  | "finalizePromotion"
-  | "reviewWorkspaceChanges"
-  | "openCapability"
-  | "convertSkill"
-  | "renameSkill"
-  | "mergeSkills"
-  | "openCandidates"
-  | "openLatestReport"
-  | "refreshReports"
-  | "openOutput";
+export type HomeActionId = GovkbActionId;
 
 export interface HomeAction {
   id: HomeActionId;
@@ -68,14 +50,18 @@ export interface HomeModel {
   sections: HomeSection[];
 }
 
-function action(id: HomeActionId, label: string, description: string, command: string, icon: string, args?: unknown[]): HomeAction {
+function action(
+  id: HomeActionId,
+  overrides: Partial<Pick<HomeAction, "label" | "description" | "command" | "icon" | "arguments">> = {}
+): HomeAction {
+  const definition = actionDefinition(id);
   return {
     id,
-    label,
-    description,
-    command,
-    icon,
-    arguments: args
+    label: overrides.label ?? definition.label,
+    description: overrides.description ?? definition.description,
+    command: overrides.command ?? definition.command,
+    icon: overrides.icon ?? definition.icon,
+    arguments: overrides.arguments
   };
 }
 
@@ -88,80 +74,77 @@ function primaryAction(input: HomeModelInput): HomeAction {
   const promotion = latestActionablePromotion(promotions);
 
   if (!status) {
-    return action("setup", "Set up GovKB", "Initialize or select a governed project.", "govkb.oneClickSetup", "rocket");
+    return action("setup");
   }
   if (status.installState.codex.status === "missing" || status.skillUpdates.state === "not-applied") {
-    return action("apply", "Apply governed skills", "Materialize governed skills into the configured Codex home.", "govkb.oneClickApply", "cloud-upload");
+    return action("apply");
   }
   if (status.skillUpdates.state === "apply-available") {
-    return action("apply", "Apply latest governed skills", "Repo and Codex materialized revisions differ.", "govkb.oneClickApply", "cloud-upload");
+    return action("apply", {
+      label: "Apply latest governed skills",
+      description: "Repo and Codex materialized revisions differ."
+    });
   }
   if (promotion?.state === "ready-for-review") {
-    return action("openPromotion", "Review learning digest", `${changedSkillCount(promotion)} changed skill file(s).`, "govkb.openPromotion", "eye", [
-      promotion
-    ]);
+    return action("openPromotion", {
+      label: "Review learning digest",
+      description: `${changedSkillCount(promotion)} changed skill file(s).`,
+      arguments: [promotion]
+    });
   }
   if (promotion?.state === "accepted") {
     return action(
-      "finalizePromotion",
-      "Finalize accepted updates",
-      "Copy reviewed governed updates into the active project without committing.",
-      "govkb.finalizeAcceptedPromotion",
-      "git-merge",
-      [promotion]
+      "finalizePromotion", {
+        label: "Finalize accepted updates",
+        description: "Copy reviewed governed updates into the active project without committing.",
+        arguments: [promotion]
+      }
     );
   }
   if (promotion?.state === "applied" && isPromotionPendingCommit(promotion, status)) {
     return action(
-      "reviewWorkspaceChanges",
-      "Commit governed updates",
-      "A finalized promotion changed .governed files that still need normal Git review.",
-      "govkb.showStatus",
-      "repo-commit"
+      "reviewWorkspaceChanges", {
+        label: "Commit governed updates",
+        description: "A finalized promotion changed .governed files that still need normal Git review.",
+        icon: "repo-commit"
+      }
     );
   }
   if (run?.dryRun && run.summary && (run.summary.existingSkillUpdates > 0 || run.summary.stagedCandidates > 0 || run.summary.staged > 0)) {
     return action(
-      "reviewLearningApply",
-      "Apply reviewed learning",
-      `${run.summary.existingSkillUpdates} existing update(s), ${run.summary.stagedCandidates} candidate(s).`,
-      "govkb.reviewLearningApply",
-      "play"
+      "reviewLearningApply", {
+        label: "Apply reviewed learning",
+        description: `${run.summary.existingSkillUpdates} existing update(s), ${run.summary.stagedCandidates} candidate(s).`
+      }
     );
   }
   if (status.skillUpdates.pendingLocalMemory.available) {
     return action(
-      "createReviewWorktree",
-      "Create learning review",
-      `${status.skillUpdates.pendingLocalMemory.pendingCount} learned update(s) need review.`,
-      "govkb.promoteAuto",
-      "git-pull-request-create"
+      "createReviewWorktree", {
+        description: `${status.skillUpdates.pendingLocalMemory.pendingCount} learned update(s) need review.`
+      }
     );
   }
   if (status.skillUpdates.state === "workspace-changes") {
     return action(
-      "reviewWorkspaceChanges",
-      "Review governed workspace changes",
-      "The active project has uncommitted .governed changes.",
-      "govkb.showStatus",
-      "diff"
+      "reviewWorkspaceChanges", {
+        description: "The active project has uncommitted .governed changes."
+      }
     );
   }
   if (inventory && inventory.sessions.selectedForReview > 0) {
     return action(
-      "reviewLearningDryRun",
-      "Review next learning batch",
-      `${inventory.sessions.selectedForReview} of ${inventory.sessions.selectedBeforeLimit} sessions selected.`,
-      "govkb.reviewLearningDryRun",
-      "debug-alt"
+      "reviewLearningDryRun", {
+        label: "Review next learning batch",
+        description: `${inventory.sessions.selectedForReview} of ${inventory.sessions.selectedBeforeLimit} sessions selected.`
+      }
     );
   }
   return action(
-    "discoverLearning",
-    "Discover learning opportunities",
-    "Load the next reviewable session batch and memory targets.",
-    "govkb.discoverLearning",
-    "search"
+    "discoverLearning", {
+      label: "Discover learning opportunities",
+      description: "Load the next reviewable session batch and memory targets."
+    }
   );
 }
 
@@ -217,29 +200,25 @@ function workflowSections(input: HomeModelInput): HomeSection[] {
         ? `${inventory.sessions.selectedForReview} selected, ${inventory.sessions.selectedBeforeLimit} available.`
         : "Inventory has not been loaded.",
     actions: [
-      action("discoverLearning", "Discover", "Refresh learning inventory.", "govkb.discoverLearning", "search"),
-      action("reviewLearningDryRun", "Dry run", "Review a bounded batch without applying memory.", "govkb.reviewLearningDryRun", "debug-alt"),
-      action("reviewLearningApply", "Apply", "Apply a bounded learning review through the CLI.", "govkb.reviewLearningApply", "play")
+      action("discoverLearning"),
+      action("reviewLearningDryRun"),
+      action("reviewLearningApply")
     ]
   });
 
   if (promotion) {
     const actions: HomeAction[] = [
-      action("openPromotion", "Open digest", "Inspect reviewed governed changes.", "govkb.openPromotion", "eye", [promotion])
+      action("openPromotion", { arguments: [promotion] })
     ];
     if (promotion.state === "ready-for-review") {
       actions.push(
-        action("acceptPromotion", "Accept", "Mark this learning review accepted after inspecting the digest.", "govkb.markPromotionAccepted", "pass", [
-          promotion
-        ]),
-        action("rejectPromotion", "Reject", "Reject this learning review with a reason.", "govkb.markPromotionRejected", "error", [promotion])
+        action("acceptPromotion", { arguments: [promotion] }),
+        action("rejectPromotion", { arguments: [promotion] })
       );
     }
     if (promotion.state === "accepted") {
       actions.unshift(
-        action("finalizePromotion", "Finalize", "Apply accepted changes into the active project.", "govkb.finalizeAcceptedPromotion", "git-merge", [
-          promotion
-        ])
+        action("finalizePromotion", { arguments: [promotion] })
       );
     }
     sections.push({
@@ -255,10 +234,10 @@ function workflowSections(input: HomeModelInput): HomeSection[] {
     title: "Governed Skills",
     description: status ? `${status.capabilities.length} governed skill(s).` : "Status not loaded.",
     actions: [
-      action("openCapability", "Open skill", "Choose and inspect a governed skill package.", "govkb.openCapability", "go-to-file"),
-      action("convertSkill", "Convert skill", "Convert one selected local Codex skill into governed source.", "govkb.convertSkillToGoverned", "new-folder"),
-      action("renameSkill", "Rename", "Rename one governed skill package.", "govkb.renameGovernedSkill", "edit"),
-      action("mergeSkills", "Merge", "Merge one governed skill into another.", "govkb.mergeGovernedSkills", "git-merge")
+      action("openCapability"),
+      action("convertSkill"),
+      action("renameSkill"),
+      action("mergeSkills")
     ]
   });
 
@@ -269,9 +248,9 @@ function workflowSections(input: HomeModelInput): HomeSection[] {
       ? `${latestReport.sessions.learned} learned, ${latestReport.sessions.failed} failed, ${latestReport.sessions.deferred} deferred.`
       : "No latest report loaded.",
     actions: [
-      action("openLatestReport", "Open latest", "Inspect the newest learning review report.", "govkb.openLatestReport", "go-to-file"),
-      action("refreshReports", "Refresh", "Reload learning review reports.", "govkb.refreshReports", "refresh"),
-      action("openOutput", "Open output", "Show full GovKB command output.", "govkb.openOutput", "output")
+      action("openLatestReport"),
+      action("refreshReports"),
+      action("openOutput")
     ]
   });
 
@@ -281,7 +260,7 @@ function workflowSections(input: HomeModelInput): HomeSection[] {
       title: "New Skill Candidates",
       description: `${candidates.length} candidate(s) need triage.`,
       actions: [
-        action("openCandidates", "Open candidates", "Review staged candidate packages.", "govkb.listCandidates", "list-tree")
+        action("openCandidates")
       ]
     });
   }

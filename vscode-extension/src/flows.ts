@@ -8,6 +8,7 @@ import {
   promoteAutoCommand,
   promotionApplyCommand,
   promotionArchiveCommand,
+  promotionCleanupCommand,
   promotionMarkReviewedCommand,
   promotionsListJsonCommand,
   renameCapabilityCommand,
@@ -22,6 +23,7 @@ import {
   parseCandidatesPayload,
   parseConversionPayload,
   parseLearningInventoryPayload,
+  parsePromotionCleanupPayload,
   parsePromotionsPayload,
   parseStatusPayload
 } from "./jsonParsers";
@@ -458,4 +460,32 @@ export async function archivePromotion(
     throw new Error(result.stderr || result.stdout || "promotion archive failed");
   }
   return listPromotions(settings, projectRoot, runner);
+}
+
+export async function cleanupPromotions(
+  settings: GovkbSettings,
+  projectRoot: string,
+  runner: CliRunner,
+  apply = false,
+  reason?: string
+): Promise<FlowResult> {
+  const command = promotionCleanupCommand(settings, projectRoot, apply, reason);
+  const result = await runner.run(command);
+  let promotionCleanup: FlowResult["promotionCleanup"];
+  if (result.stdout.trim()) {
+    promotionCleanup = parsePromotionCleanupPayload(result.stdout);
+  }
+  if (result.exitCode !== 0 || promotionCleanup?.error) {
+    return {
+      ok: false,
+      commands: [command],
+      promotionCleanup,
+      blocker: {
+        title: apply ? "GovKB promotion cleanup failed" : "GovKB promotion cleanup preview failed",
+        action: "Open the GovKB output channel",
+        detail: promotionCleanup?.error || result.stderr || result.stdout
+      }
+    };
+  }
+  return { ok: true, commands: [command], promotionCleanup };
 }

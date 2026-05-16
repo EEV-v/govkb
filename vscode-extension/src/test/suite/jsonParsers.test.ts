@@ -6,6 +6,7 @@ import {
   parseCandidatesPayload,
   parseConversionPayload,
   parseLearningInventoryPayload,
+  parsePromotionCleanupPayload,
   parsePromotionsPayload,
   parseReportSummaryPayload,
   parseStatusPayload
@@ -71,6 +72,35 @@ test("parsePromotionsPayload accepts lifecycle fixture", () => {
   const payload = parsePromotionsPayload(fixture("promotions.sample.json"));
   assert.equal(payload.promotions[0].state, "ready-for-review");
   assert.equal(payload.promotions[0].status.length, 2);
+});
+
+test("parsePromotionCleanupPayload accepts preview/apply cleanup contract", () => {
+  const payload = parsePromotionCleanupPayload(
+    JSON.stringify({
+      schemaVersion: 1,
+      projectRoot: "/repo",
+      codexHome: "/tmp/codex-home",
+      projectId: "repo",
+      promotionsRoot: "/tmp/codex-home/memories/govkb/worktrees/repo",
+      mode: "apply",
+      eligible: [
+        {
+          runId: "run-1",
+          state: "applied",
+          worktreeRoot: "/tmp/codex-home/memories/govkb/worktrees/repo/run-1",
+          metadataPath: "/tmp/codex-home/memories/govkb/promotions/repo/run-1.json",
+          eligible: true,
+          reason: "applied promotion worktree is cleanup-eligible"
+        }
+      ],
+      skipped: [],
+      removed: ["/tmp/codex-home/memories/govkb/worktrees/repo/run-1"],
+      metadataUpdated: ["/tmp/codex-home/memories/govkb/promotions/repo/run-1.json"],
+      error: null
+    })
+  );
+  assert.equal(payload.mode, "apply");
+  assert.equal(payload.removed.length, 1);
 });
 
 test("parseLearningInventoryPayload accepts fixture contract", () => {

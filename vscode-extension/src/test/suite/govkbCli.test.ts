@@ -11,6 +11,7 @@ import {
   promoteAutoCommand,
   promotionApplyCommand,
   promotionArchiveCommand,
+  promotionCleanupCommand,
   promotionMarkReviewedCommand,
   promotionShowCommand,
   promotionsListJsonCommand,
@@ -133,6 +134,26 @@ test("promotion command builders preserve lifecycle CLI contracts", () => {
     "run-1",
     "--project-root",
     "/repo",
+    "--reason",
+    "Done.",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--json"
+  ]);
+  assert.deepEqual(promotionCleanupCommand(settings, "/repo", false).args, [
+    "promotions",
+    "cleanup",
+    "/repo",
+    "--preview",
+    "--codex-home",
+    "/tmp/codex-home",
+    "--json"
+  ]);
+  assert.deepEqual(promotionCleanupCommand(settings, "/repo", true, "Done.").args, [
+    "promotions",
+    "cleanup",
+    "/repo",
+    "--apply",
     "--reason",
     "Done.",
     "--codex-home",

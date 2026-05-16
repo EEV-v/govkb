@@ -36,6 +36,8 @@
     "onCommand:govkb.markPromotionAccepted",
     "onCommand:govkb.markPromotionRejected",
     "onCommand:govkb.archivePromotion",
+    "onCommand:govkb.previewPromotionCleanup",
+    "onCommand:govkb.cleanupPromotions",
     "onCommand:govkb.applyPromotionToProject",
     "onCommand:govkb.finalizeAcceptedPromotion",
     "onCommand:govkb.listCandidates",
@@ -187,6 +189,16 @@
         "icon": "$(archive)"
       },
       {
+        "command": "govkb.previewPromotionCleanup",
+        "title": "GovKB: Preview Promotion Cleanup",
+        "icon": "$(search)"
+      },
+      {
+        "command": "govkb.cleanupPromotions",
+        "title": "GovKB: Cleanup Finished Promotions",
+        "icon": "$(trash)"
+      },
+      {
         "command": "govkb.listCandidates",
         "title": "GovKB: List Candidates",
         "icon": "$(list-tree)"
@@ -307,6 +319,13 @@
           "when": "false"
         },
         {
+          "command": "govkb.previewPromotionCleanup"
+        },
+        {
+          "command": "govkb.cleanupPromotions",
+          "when": "false"
+        },
+        {
           "command": "govkb.listCandidates",
           "when": "false"
         },
@@ -409,6 +428,11 @@
           "command": "govkb.promoteAuto",
           "when": "view == govkb.promotions",
           "group": "navigation@2"
+        },
+        {
+          "command": "govkb.previewPromotionCleanup",
+          "when": "view == govkb.promotions",
+          "group": "navigation@3"
         },
         {
           "command": "govkb.refreshReports",

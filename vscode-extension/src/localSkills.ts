@@ -1,5 +1,6 @@
 import { promises as fs } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
+import type { StatusPayload } from "./types";
 
 export interface LocalSkillSummary {
   name: string;
@@ -11,6 +12,7 @@ export interface LocalSkillSummary {
 
 export interface LocalSkillDiscoveryOptions {
   excludeNames?: Iterable<string>;
+  includeGovernedPackages?: boolean;
   includeSystemSkills?: boolean;
 }
 
@@ -100,6 +102,40 @@ function skillKeys(skill: LocalSkillSummary): string[] {
   return [skill.name, basename(skill.path), skill.relativePath].map((value) => value.trim().toLowerCase()).filter(Boolean);
 }
 
+function normalizeCapabilityToken(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function isGovkbMaterializedPackage(skill: LocalSkillSummary): boolean {
+  return skillKeys(skill).some((key) => key === "govkb" || key.startsWith("govkb-") || key.includes("/govkb-"));
+}
+
+export function governedSkillNamesForConversion(status?: StatusPayload): string[] {
+  const names = new Set<string>();
+  const projectId = normalizeCapabilityToken(status?.project.id ?? "");
+  for (const capability of status?.capabilities ?? []) {
+    for (const value of [capability.id, capability.name, ...(capability.aliases ?? [])]) {
+      if (value) {
+        names.add(value);
+      }
+    }
+    const capabilityId = normalizeCapabilityToken(capability.id);
+    if (projectId && capabilityId) {
+      names.add(`govkb-${projectId}-${capabilityId}`);
+    }
+  }
+  for (const materialized of status?.installState.codex.materializedCapabilities ?? []) {
+    if (materialized.materializedSkillId) {
+      names.add(materialized.materializedSkillId);
+    }
+  }
+  return [...names].filter(Boolean);
+}
+
 export async function discoverLocalSkills(
   codexHome: string,
   maxDepth = 2,
@@ -116,7 +152,8 @@ export async function discoverLocalSkills(
     const skill = await readSkill(directory, root);
     if (skill) {
       const excludedByProject = skillKeys(skill).some((key) => excludedNames.has(key));
-      if (!excludedByProject && !isMaterializedGovernedSkill(skill, governed)) {
+      const excludedGovernedPackage = !options.includeGovernedPackages && isGovkbMaterializedPackage(skill);
+      if (!excludedByProject && !excludedGovernedPackage && !isMaterializedGovernedSkill(skill, governed)) {
         discovered.set(skill.path, skill);
       }
       return;

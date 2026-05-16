@@ -51,6 +51,7 @@ export interface FlowResult {
   blocker?: Blocker;
   statusJson?: StatusPayload;
   promotionsJson?: PromotionsPayload;
+  promotionCleanup?: PromotionCleanupPayload;
   learningInventory?: LearningInventoryPayload;
   learningRun?: LearningRunState;
   conversion?: ConversionPayload;
@@ -341,6 +342,29 @@ export interface PromotionsPayload {
   projectId: string;
   promotionsRoot: string;
   promotions: PromotionSummary[];
+}
+
+export interface PromotionCleanupItem {
+  runId: string;
+  state: string;
+  worktreeRoot: string;
+  metadataPath: string;
+  eligible: boolean;
+  reason: string;
+}
+
+export interface PromotionCleanupPayload {
+  schemaVersion: 1;
+  projectRoot: string;
+  codexHome: string;
+  projectId: string;
+  promotionsRoot: string;
+  mode: "preview" | "apply" | string;
+  eligible: PromotionCleanupItem[];
+  skipped: PromotionCleanupItem[];
+  removed: string[];
+  metadataUpdated: string[];
+  error: string | null;
 }
 
 export interface PromotionReview {

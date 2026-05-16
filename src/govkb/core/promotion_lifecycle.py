@@ -10,7 +10,7 @@ from typing import Any
 from govkb.core.install_state import iso_utc_now
 
 
-PROMOTION_STATES = {"ready-for-review", "accepted", "applied", "rejected", "archived"}
+PROMOTION_STATES = {"ready-for-review", "accepted", "applied", "rejected", "archived", "cleaned"}
 
 
 def promotion_project_key(project_id: str) -> str:
@@ -126,5 +126,22 @@ def applied_promotion_metadata(
         "appliedAt": iso_utc_now(),
         "projectRoot": str(project_root),
         "files": files,
+    }
+    return updated
+
+
+def cleaned_promotion_metadata(
+    existing: dict[str, Any],
+    *,
+    removed_paths: list[Path],
+    reason: str,
+) -> dict[str, Any]:
+    """Return lifecycle metadata updated after cleanup removed review artifacts."""
+    updated = dict(existing)
+    updated["state"] = "cleaned"
+    updated["cleanup"] = {
+        "cleanedAt": iso_utc_now(),
+        "removedPaths": [str(path) for path in removed_paths],
+        "reason": reason,
     }
     return updated

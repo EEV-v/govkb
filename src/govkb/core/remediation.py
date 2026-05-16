@@ -306,6 +306,14 @@ def render_remediation_markdown(report: RemediationReport) -> str:
         "- This report does not change `.governed/capabilities/` files.",
         "- Capability repair, demotion, deprecation, rename, or replacement requires maintainer approval.",
         "- Durable report writes require the Git repository that owns `.governed`.",
+        "- Treat report output as review evidence, not as permission to edit governed package files automatically.",
+        "",
+        "## Review Contract",
+        "",
+        "- Outcome: choose the smallest approved remediation that restores strict governed-skill health without losing durable project knowledge.",
+        "- Source priority: strict issues and load messages identify concrete failures; capability contracts, instructions, memory, and repo files provide the evidence for any repair.",
+        "- Approval criteria: approved changes must be scoped to the affected capability, preserve useful durable memory, avoid unsafe or private content, and pass strict validation afterward.",
+        "- Stop condition: if ownership, scope, or evidence is unclear, leave packages unchanged and record the blocker for maintainer review.",
         "",
         "## Automation Policy",
         "",
@@ -366,9 +374,9 @@ def render_remediation_markdown(report: RemediationReport) -> str:
             "",
             "## Next Steps",
             "",
-            "1. Review this report with the maintainer.",
-            "2. For weak or wrong-domain capabilities, choose demotion, deprecation, rename, replacement, or repair.",
-            "3. Re-run strict validation after approved package changes.",
+            "1. Review load messages, strict issues, and recommendations with the maintainer.",
+            "2. For each affected capability, choose one approved action: remove unsafe content, repair paths or memory, demote, deprecate, rename, replace, or preserve as-is.",
+            "3. Apply only the approved package changes, then re-run `govkb validate --strict` and capture the result.",
         ]
     )
     return "\n".join(lines).rstrip() + "\n"
