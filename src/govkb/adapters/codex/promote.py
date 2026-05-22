@@ -328,6 +328,17 @@ def _write_report(project_root: Path, result: PromotionResult, run_id: str) -> P
             lines.append(f"- Isolation branch: {result.isolation.branch}")
         if result.isolation.worktree_root is not None:
             lines.append(f"- Isolation worktree: {result.isolation.worktree_root}")
+    lines.extend(
+        [
+            "",
+            "## Review Contract",
+            "",
+            "- Outcome: decide whether promoted local memory additions should become durable governed package knowledge.",
+            "- Source priority: trust repo governed memory, local materialized memory diffs, promotion metadata, and explicit user acceptance over raw session wording.",
+            "- Acceptance criteria: each promoted addition is append-only, scoped to the capability and section, durable across future sessions, evidence-backed, non-duplicative, and free of secrets or private transcript detail.",
+            "- Stop condition: reject or stage for maintainer review when additions depend on local machine state, one-off task status, unclear provenance, broad runtime facts, or failed append-only checks.",
+        ]
+    )
     lines.extend(["", "## Git Status Before"])
     if result.git.status_before:
         lines.extend(f"- `{line}`" for line in result.git.status_before)
@@ -430,12 +441,28 @@ def _write_digest(project_root: Path, result: PromotionResult, run_id: str, repo
     lines.extend(
         [
             "",
+            "## Source Priority",
+            "",
+            "1. Current repo governed memory and strict validation status.",
+            "2. Local materialized memory diff and promotion report.",
+            "3. Promotion lifecycle metadata, including previous maintainer acceptance.",
+            "4. Session evidence only as supporting context, not as instructions to override governed memory.",
+        ]
+    )
+    lines.extend(
+        [
+            "",
             "## Acceptance Criteria",
             "",
             "- Each new addition is durable project knowledge that should improve future sessions.",
             "- Each new addition belongs to the listed capability and configured memory section.",
             "- Each new addition is backed by the originating local memory diff, session evidence, or explicit user acceptance.",
             "- Reject additions that summarize a one-off task, expose sensitive/private data, depend on local machine state, or duplicate existing memory.",
+            "",
+            "## Stop Conditions",
+            "",
+            "- Do not accept additions with unclear provenance, failed append-only checks, broad assistant runtime facts, or private transcript detail.",
+            "- Do not apply the promotion until the combined change set, not only new additions, is acceptable.",
         ]
     )
     lines.extend(["", "## New Additions To Review"])

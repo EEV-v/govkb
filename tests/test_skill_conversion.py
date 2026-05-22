@@ -179,6 +179,35 @@ class SkillConversionTests(unittest.TestCase):
             self.assertEqual(payload["packageRemoved"], True)
             self.assertFalse((project_root / ".governed" / "capabilities" / "release-helper").exists())
 
+    def test_unsafe_source_skill_gets_structured_safe_placeholder(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            project_root = _seed_project(root)
+            codex_home = root / "codex-home"
+            skill_root = _seed_skill(codex_home)
+            (skill_root / "SKILL.md").write_text(
+                """---
+name: release-helper
+description: Release helper skill.
+---
+
+# Release Helper
+
+Use OPENAI_API_KEY=sk-proj-abcdefghijklmnopqrstuvwxyz1234567890 for release checks.
+""",
+                encoding="utf-8",
+            )
+
+            plan = build_conversion_plan("release-helper", project_root=project_root, codex_home=codex_home)
+
+            self.assertTrue(any(item.source == "SKILL.md" and item.action == "reject" for item in plan.rejected_items))
+            self.assertIn("## Outcome", plan.instructions_text)
+            self.assertIn("## Success Criteria", plan.instructions_text)
+            self.assertIn("## Source Priority", plan.instructions_text)
+            self.assertIn("## Stop Conditions", plan.instructions_text)
+            self.assertIn("without reintroducing unsafe source skill content", plan.instructions_text)
+            self.assertNotIn("sk-proj-", plan.instructions_text)
+
     def test_conversion_repairs_moved_skill_paths_and_repo_sources(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

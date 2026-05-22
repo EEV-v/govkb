@@ -74,8 +74,15 @@ class PromoteCommandTests(unittest.TestCase):
                 repo_memory.read_text(encoding="utf-8"),
             )
             report_root = project_root / ".governed" / "reports" / "promotions"
-            self.assertTrue(any(report_root.glob("*-promote-report.md")))
-            self.assertTrue((report_root / "latest-promotion-digest.md").is_file())
+            report_paths = sorted(report_root.glob("*-promote-report.md"))
+            self.assertTrue(report_paths)
+            report = report_paths[0].read_text(encoding="utf-8")
+            self.assertIn("## Review Contract", report)
+            self.assertIn("Source priority", report)
+            self.assertIn("Stop condition", report)
+            digest = (report_root / "latest-promotion-digest.md").read_text(encoding="utf-8")
+            self.assertIn("## Source Priority", digest)
+            self.assertIn("## Stop Conditions", digest)
 
     def test_promote_rejects_non_append_memory_change(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
