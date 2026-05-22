@@ -96,6 +96,10 @@ test("buildHomeModel guides apply when materialized skills are stale", () => {
   });
   assert.equal(model.primaryAction.id, "apply");
   assert.equal(model.primaryAction.command, "govkb.oneClickApply");
+  assert.equal(model.primaryAction.label, "Apply governed skills");
+  assert.match(model.primaryAction.description, /Repo governed skills changed/);
+  assert.match(model.primaryAction.reason ?? "", /revision/);
+  assert.match(model.primaryAction.consequence ?? "", /Updates local Codex skills/);
 });
 
 test("buildHomeModel prioritizes promotion review before another batch", () => {
@@ -157,10 +161,14 @@ test("buildHomeModel guides local memory promotion before ordinary review", () =
   assert.equal(model.primaryAction.command, "govkb.promoteAuto");
 });
 
-test("buildHomeModel guides another dry-run when project is current and inventory is loaded", () => {
+test("buildHomeModel guides learning review without exposing dry-run as the primary wording", () => {
   const model = buildHomeModel({ status, inventory });
   assert.equal(model.primaryAction.id, "reviewLearningDryRun");
   assert.equal(model.primaryAction.command, "govkb.reviewLearningDryRun");
+  assert.equal(model.primaryAction.label, "Review learning updates");
+  assert.doesNotMatch(model.primaryAction.label, /dry/i);
+  assert.match(model.primaryAction.consequence ?? "", /preview review/);
+  assert.match(model.primaryAction.consequence ?? "", /no governed memory is applied/);
   assert.equal(model.badges.find((badge) => badge.label === "Learning")?.value, "8 available");
 });
 

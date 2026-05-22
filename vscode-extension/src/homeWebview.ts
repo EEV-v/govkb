@@ -255,6 +255,28 @@ export function renderHomeHtml(model: HomeModel, nonce = "test-nonce", cspSource
       font-size: 11px;
       font-weight: 400;
     }
+
+    .action-explanation {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .explanation-item {
+      padding: 7px 8px;
+      border-left: 3px solid var(--vscode-button-background);
+      background: var(--vscode-sideBar-background);
+    }
+
+    .explanation-label {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--vscode-descriptionForeground);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+    }
   </style>
 </head>
 <body>
@@ -265,6 +287,7 @@ export function renderHomeHtml(model: HomeModel, nonce = "test-nonce", cspSource
       <div class="primary-action">
         ${renderButton(model.primaryAction, 0, "primary")}
       </div>
+      ${renderPrimaryExplanation(model.primaryAction)}
       <div class="badge-grid">
         ${model.badges
           .map(
@@ -289,6 +312,25 @@ export function renderHomeHtml(model: HomeModel, nonce = "test-nonce", cspSource
   </script>
 </body>
 </html>`;
+}
+
+function renderPrimaryExplanation(action: HomeAction): string {
+  if (!action.reason && !action.consequence) {
+    return "";
+  }
+  return `
+    <div class="action-explanation" aria-label="Primary action explanation">
+      ${action.reason ? renderExplanationItem("Why", action.reason) : ""}
+      ${action.consequence ? renderExplanationItem("Clicking it will", action.consequence) : ""}
+    </div>`;
+}
+
+function renderExplanationItem(label: string, value: string): string {
+  return `
+    <div class="explanation-item">
+      <span class="explanation-label">${escapeHtml(label)}</span>
+      <p>${escapeHtml(value)}</p>
+    </div>`;
 }
 
 function renderButton(action: HomeAction, index: number, tone: "primary" | "secondary"): string {

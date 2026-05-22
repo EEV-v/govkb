@@ -295,6 +295,33 @@ Rollback:
 
 - Keep CLI commands and remove picker refinements.
 
+### Phase 5 - Primary Action Explanation Refinement
+
+Status: Complete on 2026-05-17.
+
+Scope:
+
+- Add explicit reason and consequence text to the Home primary action.
+- Explain stale apply states as a repo-to-Codex materialization mismatch and clarify that apply updates local Codex skills without committing repo files.
+- Present the learning preview path as "Review learning updates" in the primary action instead of exposing dry-run terminology as the everyday label.
+- Keep the underlying command boundary unchanged: preview review still delegates to `govkb.reviewLearningDryRun`, and apply review still delegates to `govkb.reviewLearningApply`.
+
+Files:
+
+- `vscode-extension/src/homeState.ts`
+- `vscode-extension/src/homeWebview.ts`
+- `vscode-extension/src/actionRegistry.ts`
+- `vscode-extension/src/test/suite/homeState.test.ts`
+- `vscode-extension/src/test/suite/homeWebview.test.ts`
+
+Verify:
+
+- `npm test`
+
+Rollback:
+
+- Remove `reason` and `consequence` fields from Home actions and restore previous Home labels.
+
 ## 10. Rollback Plan
 
 The feature is additive. If Home causes issues, remove the `govkb.home` view contribution and provider registration while retaining existing tree views and commands. If icon polish causes confusing labels, revert only `views/*.ts` and `simpleTree.ts`. Python CLI behavior is not changed in the planned first implementation, so rollback should not affect governed packages.

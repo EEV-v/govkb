@@ -31,9 +31,14 @@ The current tree-only UI exposes too many raw states, paths, worktrees, and comm
 
 - A first-time user sees setup/apply guidance without needing to know command names.
 - A regular user sees one primary next action and compact supporting counts.
+- The primary action explains why it is recommended and what clicking it will do before the user runs it.
 - A reviewer can accept, reject, finalize, and archive promotions from the extension without deciphering worktree paths first.
 - A skill maintainer can convert one selected skill, rename a governed skill, or merge two governed skills through picker-driven flows.
 - A user can tell when they are done: validation is ok, Codex skills are current, no learned updates are pending, and no promotion requires action.
+
+## Daily Flow Wording Refinement
+
+Everyday Home wording should stay business-readable. In particular, stale governed skills should say why apply is needed, such as "Repo governed skills changed since the last Codex install," and should say that clicking apply updates local Codex skills from `.governed` without committing repository files. Learning review should be presented as "Review learning updates" or "Preview review" rather than making "dry run" the main happy-path label; dry-run remains an implementation detail and an advanced command name.
 
 ## Constraints
 

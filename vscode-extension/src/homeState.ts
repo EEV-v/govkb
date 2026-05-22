@@ -15,6 +15,8 @@ export interface HomeAction {
   id: HomeActionId;
   label: string;
   description: string;
+  reason?: string;
+  consequence?: string;
   command: string;
   icon: string;
   arguments?: unknown[];
@@ -52,13 +54,15 @@ export interface HomeModel {
 
 function action(
   id: HomeActionId,
-  overrides: Partial<Pick<HomeAction, "label" | "description" | "command" | "icon" | "arguments">> = {}
+  overrides: Partial<Pick<HomeAction, "label" | "description" | "reason" | "consequence" | "command" | "icon" | "arguments">> = {}
 ): HomeAction {
   const definition = actionDefinition(id);
   return {
     id,
     label: overrides.label ?? definition.label,
     description: overrides.description ?? definition.description,
+    reason: overrides.reason,
+    consequence: overrides.consequence,
     command: overrides.command ?? definition.command,
     icon: overrides.icon ?? definition.icon,
     arguments: overrides.arguments
@@ -74,21 +78,31 @@ function primaryAction(input: HomeModelInput): HomeAction {
   const promotion = latestActionablePromotion(promotions);
 
   if (!status) {
-    return action("setup");
+    return action("setup", {
+      reason: "GovKB has not loaded a governed project for this workspace yet.",
+      consequence: "Runs the guided setup flow, then refreshes project status."
+    });
   }
   if (status.installState.codex.status === "missing" || status.skillUpdates.state === "not-applied") {
-    return action("apply");
+    return action("apply", {
+      reason: "Codex skills for this project are not installed in the configured Codex home.",
+      consequence: "Materializes governed packages from `.governed` into local Codex skills without committing repo files."
+    });
   }
   if (status.skillUpdates.state === "apply-available") {
     return action("apply", {
-      label: "Apply latest governed skills",
-      description: "Repo and Codex materialized revisions differ."
+      label: "Apply governed skills",
+      description: "Repo governed skills changed since the last Codex install.",
+      reason: "The repository revision and the materialized Codex skill revision differ.",
+      consequence: "Updates local Codex skills from `.governed`; it does not change or commit the project repository."
     });
   }
   if (promotion?.state === "ready-for-review") {
     return action("openPromotion", {
       label: "Review learning digest",
       description: `${changedSkillCount(promotion)} changed skill file(s).`,
+      reason: "A learning review is ready and needs a human decision before it can affect governed source.",
+      consequence: "Opens the digest for review; accepting or rejecting remains a separate explicit action.",
       arguments: [promotion]
     });
   }
@@ -97,6 +111,8 @@ function primaryAction(input: HomeModelInput): HomeAction {
       "finalizePromotion", {
         label: "Finalize accepted updates",
         description: "Copy reviewed governed updates into the active project without committing.",
+        reason: "The digest was accepted, but its changes are still isolated from the active `.governed` package.",
+        consequence: "Applies accepted updates into `.governed`; you still review and commit the repo changes normally.",
         arguments: [promotion]
       }
     );
@@ -106,6 +122,8 @@ function primaryAction(input: HomeModelInput): HomeAction {
       "reviewWorkspaceChanges", {
         label: "Commit governed updates",
         description: "A finalized promotion changed .governed files that still need normal Git review.",
+        reason: "Accepted updates are already applied into `.governed`, but Git has not recorded them yet.",
+        consequence: "Opens the project status handoff so you can review and commit through the normal Git workflow.",
         icon: "repo-commit"
       }
     );
@@ -114,36 +132,46 @@ function primaryAction(input: HomeModelInput): HomeAction {
     return action(
       "reviewLearningApply", {
         label: "Apply reviewed learning",
-        description: `${run.summary.existingSkillUpdates} existing update(s), ${run.summary.stagedCandidates} candidate(s).`
+        description: `${run.summary.existingSkillUpdates} existing update(s), ${run.summary.stagedCandidates} candidate(s).`,
+        reason: "The latest preview found useful governed-memory updates or candidate skills.",
+        consequence: "Runs the apply review path so accepted local learning can become a reviewable promotion."
       }
     );
   }
   if (status.skillUpdates.pendingLocalMemory.available) {
     return action(
       "createReviewWorktree", {
-        description: `${status.skillUpdates.pendingLocalMemory.pendingCount} learned update(s) need review.`
+        description: `${status.skillUpdates.pendingLocalMemory.pendingCount} learned update(s) need review.`,
+        reason: "Local Codex skills contain learned memory that is not yet in governed source.",
+        consequence: "Creates an isolated promotion worktree and digest for human review."
       }
     );
   }
   if (status.skillUpdates.state === "workspace-changes") {
     return action(
       "reviewWorkspaceChanges", {
-        description: "The active project has uncommitted .governed changes."
+        description: "The active project has uncommitted .governed changes.",
+        reason: "GovKB sees workspace changes under the governed package.",
+        consequence: "Refreshes status so you can inspect the exact files before continuing."
       }
     );
   }
   if (inventory && inventory.sessions.selectedForReview > 0) {
     return action(
       "reviewLearningDryRun", {
-        label: "Review next learning batch",
-        description: `${inventory.sessions.selectedForReview} of ${inventory.sessions.selectedBeforeLimit} sessions selected.`
+        label: "Review learning updates",
+        description: `${inventory.sessions.selectedForReview} of ${inventory.sessions.selectedBeforeLimit} sessions selected for preview.`,
+        reason: "GovKB found reviewable sessions that may contain reusable learning.",
+        consequence: "Runs a bounded preview review and writes a report; no governed memory is applied by this click."
       }
     );
   }
   return action(
     "discoverLearning", {
       label: "Discover learning opportunities",
-      description: "Load the next reviewable session batch and memory targets."
+      description: "Load the next reviewable session batch and memory targets.",
+      reason: "Learning inventory has not been loaded for this project state.",
+      consequence: "Runs read-only discovery so Home can decide whether a review is useful."
     }
   );
 }
@@ -201,8 +229,14 @@ function workflowSections(input: HomeModelInput): HomeSection[] {
         : "Inventory has not been loaded.",
     actions: [
       action("discoverLearning"),
-      action("reviewLearningDryRun"),
-      action("reviewLearningApply")
+      action("reviewLearningDryRun", {
+        label: "Preview review",
+        description: "Classify a bounded batch without applying memory."
+      }),
+      action("reviewLearningApply", {
+        label: "Apply review",
+        description: "Run the approved learning review path."
+      })
     ]
   });
 

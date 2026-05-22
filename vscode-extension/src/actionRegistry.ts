@@ -72,8 +72,8 @@ export const actionDefinitions: Record<GovkbActionId, GovkbActionDefinition> = {
   reviewLearningDryRun: {
     id: "reviewLearningDryRun",
     command: "govkb.reviewLearningDryRun",
-    label: "Dry run",
-    description: "Review a bounded batch without applying memory.",
+    label: "Preview review",
+    description: "Review a bounded batch without changing memory.",
     icon: "debug-alt",
     mutates: "codexHome",
     cliBacked: true
@@ -81,7 +81,7 @@ export const actionDefinitions: Record<GovkbActionId, GovkbActionDefinition> = {
   reviewLearningApply: {
     id: "reviewLearningApply",
     command: "govkb.reviewLearningApply",
-    label: "Apply",
+    label: "Apply review",
     description: "Apply a bounded learning review through the CLI.",
     icon: "play",
     mutates: "codexHome",

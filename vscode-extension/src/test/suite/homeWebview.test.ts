@@ -83,10 +83,25 @@ test("renderHomeHtml exposes primary and section actions", () => {
   const html = renderHomeHtml(model);
   assert.match(html, /GovKB Home/);
   assert.match(html, /Set up GovKB/);
+  assert.match(html, /Why/);
+  assert.match(html, /Clicking it will/);
   assert.match(html, /data-action-index="0"/);
   assert.match(html, /data-command="govkb.oneClickSetup"/);
   assert.match(html, /<svg viewBox="0 0 24 24"/);
   assert.ok(html.indexOf("primary-action") < html.indexOf("badge-grid"));
+});
+
+test("renderHomeHtml explains why stale governed skills need apply", () => {
+  const model = buildHomeModel({
+    status: {
+      ...status,
+      skillUpdates: { ...status.skillUpdates, state: "apply-available", repoRevision: "def" }
+    }
+  });
+  const html = renderHomeHtml(model);
+  assert.match(html, /Repo governed skills changed since the last Codex install/);
+  assert.match(html, /The repository revision and the materialized Codex skill revision differ/);
+  assert.match(html, /Updates local Codex skills from `.governed`/);
 });
 
 test("allHomeActions includes guided promotion and skill management actions", () => {

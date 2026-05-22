@@ -14,7 +14,7 @@ The implementation matches the accepted PoC direction: the extension now has a f
 
 | Requirement | PoC Assertion | Implementation Evidence | Result | Notes |
 |---|---|---|---|---|
-| REQ-VGDW-01 | A single primary action must be derived from current state. | `vscode-extension/src/homeState.ts`; `vscode-extension/src/test/suite/homeState.test.ts`. | PASS | Tests cover setup, apply, review digest, finalize, commit, dry-run, and apply-after-dry-run states. |
+| REQ-VGDW-01 | A single primary action must be derived from current state. | `vscode-extension/src/homeState.ts`; `vscode-extension/src/test/suite/homeState.test.ts`. | PASS | Tests cover setup, apply, review digest, finalize, commit, preview review, and apply-after-preview states, including primary action reason and consequence text. |
 | REQ-VGDW-02 | Native tree views remain compact. | `vscode-extension/src/views/*.ts`; `vscode-extension/src/views/simpleTree.ts`; `vscode-extension/src/test/suite/views.test.ts`. | PASS | Rows now carry ThemeIcon metadata and clearer next-step labels. |
 | REQ-VGDW-03 | Setup, apply, learning, promotion, finalize, commit, and apply-after-commit states are represented. | `homeState.ts`, `learningView.ts`, `promotionsView.ts`, and view tests. | PASS | Home and native views share promotion helper behavior. |
 | REQ-VGDW-04 | UI uses icons and clear labels. | Home inline SVG icons, manifest command icons, and TreeRow ThemeIcons. | PASS | No remote web assets or third-party UI package added. |
@@ -24,6 +24,7 @@ The implementation matches the accepted PoC direction: the extension now has a f
 | REQ-VGDW-08 | Stale or duplicate worktrees are collapsed. | `promotionGroups` and promotion view tests. | PASS | Equivalent review worktrees show as hidden duplicates instead of separate primary actions. |
 | REQ-VGDW-09 | Mutations go through CLI-backed commands. | `extension.ts` Home action dispatch executes contributed commands only. | PASS | No direct repository mutation was added to the webview. |
 | REQ-VGDW-10 | Raw transcript and local assistant state stay out of UI fixtures. | Tests use synthetic status, inventory, report, and promotion payloads. | PASS | Feature docs contain summarized requirements, not raw transcripts. |
+| REQ-VGDW-11 | Everyday Home wording avoids dry-run jargon in the primary learning path. | `homeState.ts`, `actionRegistry.ts`, `homeState.test.ts`. | PASS | The command remains `govkb.reviewLearningDryRun`, but the primary label is `Review learning updates` and explains it is a preview. |
 
 ## Scenario Parity
 
@@ -31,7 +32,7 @@ The implementation matches the accepted PoC direction: the extension now has a f
 |---|---|---|---|
 | UC-1 First-open guided Home | `homeState.test.ts`, `homeWebview.test.ts`, packaging tests. | PASS | Home renders setup when no status is loaded. |
 | UC-2 Setup/apply guidance | `homeState.test.ts`. | PASS | Stale materialized skills guide to one-click apply. |
-| UC-3 Learning review from daily flow | `homeState.test.ts`, `learningView` tests. | PASS | Productive dry runs guide to apply; inventory guides to dry run. |
+| UC-3 Learning review from daily flow | `homeState.test.ts`, `learningView` tests. | PASS | Productive previews guide to apply; inventory guides to `Review learning updates` without exposing dry-run as the primary label. |
 | UC-4 Promotion review/finalize | `homeState.test.ts`, `views.test.ts`. | PASS | Ready, accepted, and applied states have distinct next steps. |
 | UC-5 Applied changes need commit | `homeState.test.ts`, `views.test.ts`. | PASS | Commit prompt appears only when active governed paths overlap the applied promotion. |
 | UC-6 Picker-driven skill management | `localSkills.test.ts`, `homeWebview.test.ts`. | PASS | Home exposes convert, rename, and merge without requiring typed skill names by default. |
@@ -46,7 +47,7 @@ The implementation matches the accepted PoC direction: the extension now has a f
 | Command | Working Dir | Result | Evidence |
 |---|---|---|---|
 | `git diff --check` | `/Users/vasilevevgeny/code/govkb` | PASS | No whitespace errors. |
-| `npm test` | `/Users/vasilevevgeny/code/govkb/vscode-extension` | PASS | 107 extension tests passed. |
+| `npm test` | `/Users/vasilevevgeny/code/govkb/vscode-extension` | PASS | 116 extension tests passed on 2026-05-17 after the primary action explanation refinement. |
 | `npm run test:host` | `/Users/vasilevevgeny/code/govkb/vscode-extension` | PASS | Extension host exited with code 0. |
 | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src /Users/vasilevevgeny/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/bin/python3 -m unittest discover -s tests -v` | `/Users/vasilevevgeny/code/govkb` | PASS | 164 Python tests passed, 33 skipped scaffold tests. |
 | VS Code Extension Development Host manual QA | `/Users/vasilevevgeny/code/govkb` | PASS | Isolated dev host launched on Clearing with `--extensionDevelopmentPath`; CDP inspection confirmed Home webview content and conversion picker filtering. |

@@ -45,7 +45,8 @@ And running the action delegates to the existing setup or apply flow
 
 Given learning inventory reports reviewable sessions
 When the user chooses the primary review action
-Then the UI runs a bounded dry-run by default
+Then the primary label is business-readable, such as "Review learning updates"
+And the UI runs a bounded preview review by default without applying memory
 And live progress shows the current session, reviewed count, learned count, failed count, and latest report link
 And the output channel remains available for full command logs
 
@@ -96,6 +97,7 @@ And refresh reloads state from CLI-backed sources after completion
 Given the dashboard model receives `<state>`
 When it derives the primary next action
 Then the primary action is `<expected>`
+And the primary action explains why it is recommended and what clicking it will do
 
 Examples:
 
@@ -107,7 +109,7 @@ Examples:
 | promotion ready for review | inspect digest |
 | promotion accepted | finalize accepted updates |
 | applied promotion with dirty governed files | commit governed updates |
-| clean current project | review another learning batch |
+| clean current project | review learning updates |
 
 ## Negative And Governance Cases
 
