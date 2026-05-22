@@ -1,0 +1,83 @@
+contract_version = 1
+
+[capability]
+id = "prompt-engineering-kb"
+name = "Prompt Engineering KB"
+governed = true
+description = "Vendor-aware prompt-engineering knowledge base for designing, auditing, rewriting, migrating, and evaluating production LLM prompts, seeded with official OpenAI and Anthropic guidance and requiring official vendor docs for provider-specific claims."
+
+[routing]
+aliases = [
+  "$prompt-engineering-kb",
+  "prompt engineering kb",
+  "prompt-engineering-kb",
+  "prompt best practices",
+  "prompt audit",
+]
+hints = [
+  "prompt engineering",
+  "prompt design",
+  "prompt audit",
+  "prompt rewrite",
+  "prompt migration",
+  "OpenAI prompt",
+  "Anthropic prompt",
+  "Claude prompt",
+  "vendor prompt",
+  "model provider prompt",
+  "Gemini prompt",
+  "Mistral prompt",
+  "Cohere prompt",
+  "xAI prompt",
+  "LLM instructions",
+  "tool-use prompt",
+  "prompt evaluation",
+  "output contract",
+]
+negative_hints = [
+  "feature cookbook",
+  "bugfix cookbook",
+  "Level 3 support",
+  "grade screening",
+  "project workflow",
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = true
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Table of Contents",
+  "Core Workflow",
+  "Vendor Scope And Source Policy",
+  "Cross-Provider Prompt Architecture",
+  "OpenAI Guidance",
+  "Anthropic/Claude Guidance",
+  "Technique Selection",
+  "Production Prompt Templates",
+  "Prompt Audit Checklist",
+  "Code And Docs Map",
+  "Source Map",
+]
+
+[bootstrap]
+profile = "workflow"
+repo_roots = ["."]
+authority_paths = ["README.md", "docs/governed-skill-knowledge-framework"]
+seed_paths = ["README.md", "docs/governed-skill-knowledge-framework", "docs/COOKBOOK", "docs/FEATURE_SPEC_COOKBOOK"]
+
+[kb_health]
+requires_verification_commands = false
+requires_repo_map = true
+required_sections = [
+  "Core Workflow",
+  "Vendor Scope And Source Policy",
+  "Cross-Provider Prompt Architecture",
+  "OpenAI Guidance",
+  "Anthropic/Claude Guidance",
+  "Prompt Audit Checklist",
+  "Code And Docs Map",
+]
