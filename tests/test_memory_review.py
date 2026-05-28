@@ -500,7 +500,7 @@ required_sections = ["Working Agreement"]
                 sessions, stats = module.load_sessions(
                     argparse.Namespace(
                         session_file=None,
-                        lookback_days=30,
+                        lookback_days=90,
                         max_sessions=None,
                     ),
                     {"processed_sessions": {}},
@@ -1959,6 +1959,7 @@ required_sections = ["Working Agreement"]
             captured["cmd"] = list(cmd)
             captured["env"] = dict(kwargs["env"])
             captured["stdin"] = kwargs.get("stdin")
+            captured["input"] = kwargs.get("input")
             return subprocess.CompletedProcess(
                 cmd,
                 0,
@@ -1988,7 +1989,9 @@ required_sections = ["Working Agreement"]
         self.assertIn("--cd", captured["cmd"])
         self.assertEqual(captured["cmd"][captured["cmd"].index("--cd") + 1], "/tmp/DemoProject")
         self.assertEqual(captured["env"]["CODEX_HOME"], "/tmp/classifier-codex-home")
-        self.assertEqual(captured["stdin"], scheduler.subprocess.DEVNULL)
+        self.assertIsNone(captured["stdin"])
+        self.assertEqual(captured["cmd"][-1], "-")
+        self.assertIn("Session: session-1", captured["input"])
         self.assertIn("-c", captured["cmd"])
         self.assertEqual(captured["cmd"][captured["cmd"].index("-c") + 1], 'model_reasoning_effort="low"')
 

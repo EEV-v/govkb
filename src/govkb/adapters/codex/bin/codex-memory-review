@@ -1381,7 +1381,8 @@ def classify_session(
             cmd.extend(["--model", model])
         if reasoning:
             cmd.extend(["-c", f"model_reasoning_effort={json.dumps(reasoning)}"])
-        cmd.append(prompt_for_session(session, targets, sanitized, evidence))
+        prompt = prompt_for_session(session, targets, sanitized, evidence)
+        cmd.append("-")
         env = os.environ.copy()
         env["CODEX_HOME"] = str(classifier_home)
         codex_parent = str(Path(codex).expanduser().parent)
@@ -1394,7 +1395,7 @@ def classify_session(
                 capture_output=True,
                 timeout=timeout,
                 env=env,
-                stdin=subprocess.DEVNULL,
+                input=prompt,
             )
         except subprocess.TimeoutExpired as exc:
             details = [
