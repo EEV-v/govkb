@@ -2026,14 +2026,26 @@ def run_candidate_staging(requests: list[dict[str, Any]]) -> int:
     return failures
 
 
-def run_proposal_staging(requests: list[dict[str, Any]]) -> int:
-    failures = 0
+def proposal_stage_failure(request: dict[str, Any], reason: str) -> dict[str, Any]:
+    return {
+        "session_id": request.get("session_id", ""),
+        "target_capability": request.get("target_capability", ""),
+        "proposal_type": request.get("proposal_type", ""),
+        "proposal_id": request.get("proposal_id", ""),
+        "validation_reason": reason,
+    }
+
+
+def run_proposal_staging(requests: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    staged: list[dict[str, Any]] = []
+    failures: list[dict[str, Any]] = []
     for request in requests:
         project_root = Path(str(request["project_root"])).expanduser().resolve()
         proposal = request.get("proposal")
         if not isinstance(proposal, dict):
-            failures += 1
-            log(f"Proposal staging failed for session {request.get('session_id')}: missing proposal payload")
+            reason = "missing proposal payload"
+            failures.append(proposal_stage_failure(request, reason))
+            log(f"Proposal staging failed for session {request.get('session_id')}: {reason}")
             continue
         govkb_dir = project_root / "govkb"
         cwd = govkb_dir if govkb_dir.is_dir() else project_root
@@ -2091,9 +2103,14 @@ def run_proposal_staging(requests: list[dict[str, Any]]) -> int:
             for line in proc.stderr.strip().splitlines():
                 log(f"govkb proposals stderr: {line}")
         if proc.returncode != 0:
-            failures += 1
+            stderr_lines = [line.strip() for line in proc.stderr.strip().splitlines() if line.strip()]
+            reason = stderr_lines[-1] if stderr_lines else f"proposal staging failed with exit code {proc.returncode}"
+            reason = reason.removeprefix("error: could not stage proposal: ").strip()
+            failures.append(proposal_stage_failure(request, reason))
             log(f"Proposal staging failed for session {request['session_id']} with exit code {proc.returncode}")
-    return failures
+            continue
+        staged.append(request)
+    return staged, failures
 
 
 def run_candidate_auto_create(project_roots: set[Path]) -> tuple[int, list[dict[str, Any]]]:
@@ -2456,6 +2473,7 @@ def process(args: argparse.Namespace) -> int:
     emit_progress(args, "artifact_written", runId=run_id, kind="stagedPatch", path=str(staged_patch))
     candidate_stage_rows = list(candidate_stage_requests.values())
     proposal_stage_rows = list(proposal_stage_requests.values())
+    staged_proposal_rows = proposal_stage_rows
     report_path = write_report(
         run_id,
         discovery,
@@ -2494,7 +2512,7 @@ def process(args: argparse.Namespace) -> int:
             rejected=len(rejected),
             existingSkillUpdates=len(applied) + len(staged),
             stagedCandidates=len(candidate_stage_rows),
-            stagedProposals=len(proposal_stage_rows),
+            stagedProposals=len(staged_proposal_rows),
         )
 
     if not args.dry_run:
@@ -2507,10 +2525,34 @@ def process(args: argparse.Namespace) -> int:
         if candidate_stage_failures:
             emit_finished("failed")
             return 1
-        proposal_stage_failures = run_proposal_staging(proposal_stage_rows) if proposal_stage_rows else 0
+        proposal_stage_failures: list[dict[str, Any]] = []
+        if proposal_stage_rows:
+            staged_proposal_rows, proposal_stage_failures = run_proposal_staging(proposal_stage_rows)
         if proposal_stage_failures:
-            emit_finished("failed")
-            return 1
+            proposal_rejections.extend(proposal_stage_failures)
+            report_path = write_report(
+                run_id,
+                discovery,
+                sessions,
+                skipped,
+                deferred,
+                applied,
+                staged,
+                candidate_stage_rows,
+                candidate_auto_create_results,
+                rejected,
+                failed,
+                args.dry_run,
+                {
+                    "model": getattr(args, "codex_model", None) or "default",
+                    "reasoning": getattr(args, "codex_reasoning", None) or "default",
+                    "timeout": getattr(args, "codex_timeout", None),
+                    "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
+                },
+                staged_proposal_rows,
+                proposal_rejections,
+            )
+            emit_progress(args, "artifact_written", runId=run_id, kind="report", path=str(report_path))
         if candidate_auto_create_project_roots:
             auto_create_failures, candidate_auto_create_results = run_candidate_auto_create(candidate_auto_create_project_roots)
             report_path = write_report(

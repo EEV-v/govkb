@@ -209,6 +209,167 @@ class MemoryReviewCapabilityEvolutionUseCaseTests(unittest.TestCase):
             self.assertIn("## Capability Evolution Proposals", report)
             self.assertIn("release-validation-script", report)
 
+    def test_uc_5_invalid_proposal_staging_does_not_block_session_state(self) -> None:
+        """UC-5: Invalid generated proposals are rejected without repeating learned session tails."""
+        scheduler = load_scheduler()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            helper = MemoryReviewCapabilityEvolutionTestHelper(self, root)
+            project_root = helper.seed_project()
+            capability_root = helper.seed_capability()
+            session_path = root / "session.jsonl"
+            session_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": "2026-05-28T00:00:00Z",
+                                "type": "session_meta",
+                                "payload": {"id": "session-1", "cwd": str(project_root)},
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": "2026-05-28T00:10:00Z",
+                                "type": "event_msg",
+                                "payload": {"type": "user_message", "message": "make reusable helper"},
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            memory_path = capability_root / "references" / "long-term-memory.md"
+            target = scheduler.MemoryTarget(
+                skill="govkb-demo-project-release-validation-workflow",
+                capability_id="release-validation-workflow",
+                project_id="demo-project",
+                path=memory_path,
+                requires_explicit_acceptance=False,
+                headings=("Working Agreement", "Stable Workflows", "Commands And Verification", "Code And Docs Map"),
+                content=memory_path.read_text(encoding="utf-8"),
+                aliases=("release-validation-workflow",),
+                hints=("release validation",),
+                negative_hints=(),
+                project_root=project_root,
+            )
+            session = scheduler.SessionRef(
+                id="session-1",
+                thread_name="session.jsonl",
+                updated_at="2026-05-28T00:10:00Z",
+                path=session_path,
+                indexed=True,
+                review_after="2026-05-28T00:00:00Z",
+            )
+            proposal = helper.proposal_payload(proposal_id="unsafe-helper")
+            proposal_failure = scheduler.proposal_stage_failure(
+                {
+                    "session_id": "session-1",
+                    "target_capability": "release-validation-workflow",
+                    "proposal_type": "script",
+                    "proposal_id": "unsafe-helper",
+                },
+                "mutating script proposal must document --dry-run or --preview behavior",
+            )
+            state_dir = root / "state"
+            reports_root = state_dir / "reports"
+            logs_root = state_dir / "logs"
+            original_state_dir = scheduler.STATE_DIR
+            original_report_dir = scheduler.REPORT_DIR
+            original_log_dir = scheduler.LOG_DIR
+            original_state_file = scheduler.STATE_FILE
+            try:
+                scheduler.STATE_DIR = state_dir
+                scheduler.REPORT_DIR = reports_root
+                scheduler.LOG_DIR = logs_root
+                scheduler.STATE_FILE = state_dir / "state.json"
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with patch.object(
+                    scheduler,
+                    "load_sessions",
+                    return_value=(
+                        [session],
+                        scheduler.DiscoveryStats(
+                            indexed_rows=1,
+                            indexed_missing_files=0,
+                            file_only_recent_unprocessed=0,
+                            selected_indexed=1,
+                            selected_file_only=0,
+                            total_discovered=1,
+                            already_processed=0,
+                            selected_before_limit=1,
+                        ),
+                    ),
+                ), patch.object(
+                    scheduler,
+                    "discover_memory_targets",
+                    return_value={target.skill: target},
+                ), patch.object(
+                    scheduler,
+                    "targets_for_session",
+                    return_value={target.skill: target},
+                ), patch.object(
+                    scheduler,
+                    "prescreen_session",
+                    return_value=(True, "synthetic proposal session"),
+                ), patch.object(
+                    scheduler,
+                    "should_stage_capability_candidate",
+                    return_value=False,
+                ), patch.object(
+                    scheduler,
+                    "run_candidate_auto_create",
+                    return_value=(0, []),
+                ), patch.object(
+                    scheduler,
+                    "run_proposal_staging",
+                    return_value=([], [proposal_failure]),
+                ), patch.object(
+                    scheduler,
+                    "classify_session",
+                    return_value={
+                        "session_id": "session-1",
+                        "candidates": [],
+                        "semantic_candidate": None,
+                        "capability_evolution_proposals": [proposal],
+                    },
+                ), redirect_stdout(stdout), redirect_stderr(stderr):
+                    exit_code = scheduler.process(
+                        argparse.Namespace(
+                            dry_run=False,
+                            inventory_json=False,
+                            progress_jsonl=True,
+                            lookback_days=90,
+                            max_sessions=5,
+                            verbose=False,
+                            codex_timeout=30,
+                            codex_model=None,
+                            codex_reasoning=None,
+                            classifier_codex_home=None,
+                            session_file=None,
+                            resolved_project_root=project_root,
+                            auto_promote=False,
+                        )
+                    )
+            finally:
+                scheduler.STATE_DIR = original_state_dir
+                scheduler.REPORT_DIR = original_report_dir
+                scheduler.LOG_DIR = original_log_dir
+                scheduler.STATE_FILE = original_state_file
+
+            self.assertEqual(exit_code, 0)
+            state = json.loads((state_dir / "state.json").read_text(encoding="utf-8"))
+            self.assertEqual(state["processed_sessions"]["session-1"], "2026-05-28T00:10:00Z")
+            events = [json.loads(line) for line in stdout.getvalue().splitlines()]
+            self.assertEqual(events[-1]["event"], "run_finished")
+            self.assertEqual(events[-1]["status"], "completed")
+            self.assertEqual(events[-1]["stagedProposals"], 0)
+            report = next(reports_root.glob("*-report.md")).read_text(encoding="utf-8")
+            self.assertIn("## Rejected Capability Evolution Proposals", report)
+            self.assertIn("mutating script proposal must document", report)
+
     def test_uc_10_supported_proposal_types_validate(self) -> None:
         """UC-10: Supported proposal types are accepted when paths and safety metadata are valid."""
         from govkb.core.proposals import ProposalError
