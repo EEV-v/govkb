@@ -516,6 +516,160 @@ required_sections = ["Working Agreement"]
             self.assertEqual(stats.indexed_rows, 0)
             self.assertEqual(stats.selected_file_only, 1)
 
+    def test_packaged_scheduler_reselects_file_only_session_with_new_rows(self) -> None:
+        module = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            codex_home = Path(temp_dir) / ".codex"
+            sessions_root = codex_home / "sessions" / "2026" / "04" / "24"
+            sessions_root.mkdir(parents=True, exist_ok=True)
+            session_id = "019dbe7d-8951-74e2-b65c-120f4d9e21ee"
+            processed_at = "2026-04-24T07:56:31.457Z"
+            updated_at = "2026-04-24T08:10:00.000Z"
+            session_path = sessions_root / f"rollout-2026-04-24T10-56-31-{session_id}.jsonl"
+            session_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": processed_at,
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": session_id,
+                                    "timestamp": processed_at,
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": updated_at,
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "New durable workflow detail.",
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            original_sessions_dir = module.SESSIONS_DIR
+            original_session_index = module.SESSION_INDEX
+            original_log = module.log
+            try:
+                module.SESSIONS_DIR = codex_home / "sessions"
+                module.SESSION_INDEX = codex_home / "session_index.jsonl"
+                module.log = lambda _message: None
+                sessions, stats = module.load_sessions(
+                    argparse.Namespace(
+                        session_file=None,
+                        lookback_days=90,
+                        max_sessions=None,
+                    ),
+                    {
+                        "last_successful_updated_at": "2026-04-25T00:00:00.000Z",
+                        "processed_sessions": {session_id: processed_at},
+                    },
+                )
+                up_to_date_sessions, up_to_date_stats = module.load_sessions(
+                    argparse.Namespace(
+                        session_file=None,
+                        lookback_days=90,
+                        max_sessions=None,
+                    ),
+                    {"processed_sessions": {session_id: updated_at}},
+                )
+            finally:
+                module.SESSIONS_DIR = original_sessions_dir
+                module.SESSION_INDEX = original_session_index
+                module.log = original_log
+
+            self.assertEqual(len(sessions), 1)
+            self.assertEqual(sessions[0].id, session_id)
+            self.assertEqual(sessions[0].updated_at, updated_at)
+            self.assertEqual(sessions[0].review_after, processed_at)
+            self.assertEqual(stats.already_processed, 0)
+            self.assertEqual(stats.selected_file_only, 1)
+            self.assertEqual(up_to_date_sessions, [])
+            self.assertEqual(up_to_date_stats.already_processed, 1)
+
+    def test_packaged_scheduler_filters_already_processed_rows_from_classifier_input(self) -> None:
+        module = load_packaged_memory_review_script()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            session_path = Path(temp_dir) / "session.jsonl"
+            processed_at = "2026-04-24T07:56:31.457Z"
+            updated_at = "2026-04-24T08:10:00.000Z"
+            session_path.write_text(
+                "\n".join(
+                    [
+                        json.dumps(
+                            {
+                                "timestamp": processed_at,
+                                "type": "session_meta",
+                                "payload": {
+                                    "id": "session-1",
+                                    "timestamp": processed_at,
+                                    "cwd": temp_dir,
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": processed_at,
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "Old processed request.",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": updated_at,
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "user_message",
+                                    "message": "New reusable workflow detail.",
+                                },
+                            }
+                        ),
+                        json.dumps(
+                            {
+                                "timestamp": updated_at,
+                                "type": "event_msg",
+                                "payload": {
+                                    "type": "task_complete",
+                                    "last_agent_message": "Validated the new workflow detail.",
+                                },
+                            }
+                        ),
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            session = module.SessionRef(
+                id="session-1",
+                thread_name="session.jsonl",
+                updated_at=updated_at,
+                path=session_path,
+                indexed=False,
+                review_after=processed_at,
+            )
+
+            sanitized = module.sanitize_session(session)
+            signals = module.collect_session_signals(session, {})
+            evidence = module.build_session_evidence(session, signals)
+
+            self.assertIn(f"Reviewing entries after: {processed_at}", sanitized)
+            self.assertNotIn("Old processed request.", sanitized)
+            self.assertIn("New reusable workflow detail.", sanitized)
+            self.assertNotIn("Old processed request.", signals.user_text)
+            self.assertIn("New reusable workflow detail.", signals.user_text)
+            self.assertEqual(evidence.user_ask, "New reusable workflow detail.")
+
     def test_packaged_scheduler_skips_index_rows_without_session_files(self) -> None:
         module = load_packaged_memory_review_script()
         with tempfile.TemporaryDirectory() as temp_dir:
