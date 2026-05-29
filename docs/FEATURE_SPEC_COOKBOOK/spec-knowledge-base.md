@@ -10,7 +10,6 @@ Cross-feature reusable learning for GovKB business-spec convergence.
 - If an extension or UI wraps CLI behavior, explicitly decide whether the CLI needs machine-readable output before implementation planning.
 
 ## Recurring Open-question Categories
-
 - first supported platform
 - runtime provisioning mechanism
 - source of truth versus derived local output
@@ -20,6 +19,7 @@ Cross-feature reusable learning for GovKB business-spec convergence.
 - public packaging and branding
 - multi-root or multi-project behavior
 - JSON or structured output needed for UI surfaces
+- Memory-review dry-run and mutation/apply mode are separate governance decisions.
 
 ## Stable Owners By Domain
 

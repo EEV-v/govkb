@@ -27,6 +27,7 @@ This initial implementation covers:
 - `govkb review-memory --assistant codex` to run the project-scoped memory-review adapter
 - local install-state tracking for Codex materialization
 - governed learning classification, staging, auto-promotion, and audit reports
+- `govkb proposals list/show/apply` for review-gated capability-evolution proposals
 - optional local VSIX proof under `vscode-extension/` for VS Code setup, apply,
   status, candidates, and report views
 

@@ -1096,7 +1096,7 @@ def schema_text() -> str:
     schema = {
         "type": "object",
         "additionalProperties": False,
-        "required": ["session_id", "candidates", "semantic_candidate"],
+        "required": ["session_id", "candidates", "semantic_candidate", "capability_evolution_proposals"],
         "properties": {
             "session_id": {"type": "string"},
             "candidates": {
@@ -1168,6 +1168,51 @@ def schema_text() -> str:
                     },
                 },
             },
+            "capability_evolution_proposals": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": [
+                        "proposal_id",
+                        "target_capability",
+                        "proposal_type",
+                        "output_paths",
+                        "purpose",
+                        "inputs",
+                        "outputs",
+                        "safety_class",
+                        "evidence",
+                        "verification_command",
+                        "confidence",
+                        "sensitivity",
+                        "cron_apply_reason",
+                        "draft_output",
+                    ],
+                    "properties": {
+                        "proposal_id": {"type": "string"},
+                        "target_capability": {"type": "string"},
+                        "proposal_type": {
+                            "type": "string",
+                            "enum": ["script", "wrapper", "prompt", "runbook", "instructions_update"],
+                        },
+                        "output_paths": {"type": "array", "items": {"type": "string"}},
+                        "purpose": {"type": "string"},
+                        "inputs": {"type": "array", "items": {"type": "string"}},
+                        "outputs": {"type": "array", "items": {"type": "string"}},
+                        "safety_class": {
+                            "type": "string",
+                            "enum": ["read_only", "mutating_with_dry_run", "docs_only", "prompt_only", "instructions_only"],
+                        },
+                        "evidence": {"type": "string"},
+                        "verification_command": {"type": "string"},
+                        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                        "sensitivity": {"type": "string", "enum": ["clean", "sensitive", "unknown"]},
+                        "cron_apply_reason": {"type": "string"},
+                        "draft_output": {"type": ["string", "null"]},
+                    },
+                },
+            },
         },
     }
     return json.dumps(schema, indent=2)
@@ -1183,7 +1228,9 @@ def prompt_for_session(
     for target in targets.values():
         gate = "requires explicit acceptance" if target.requires_explicit_acceptance else "auto-eligible if strict gates pass"
         headings = ", ".join(target.headings) if target.headings else "(no ## headings; stage only)"
-        target_lines.append(f"- {target.skill}: {target.path}; {gate}; valid sections: {headings}")
+        target_lines.append(
+            f"- {target.skill} (capability_id={target.capability_id}): {target.path}; {gate}; valid sections: {headings}"
+        )
 
     memory_digest = []
     for target in targets.values():
@@ -1199,13 +1246,15 @@ def prompt_for_session(
         f"- Repo-relative artifacts: {', '.join(evidence.artifact_paths) if evidence.artifact_paths else '(none)'}",
     ]
 
-    return f"""You classify whether a Codex session produced durable governed memory updates or a new semantic capability candidate.
+    return f"""You classify whether a Codex session produced durable governed memory updates, a capability-evolution proposal, or a new semantic capability candidate.
 
 Return only JSON matching the provided schema.
 
 Outcome:
-- Produce append-only memory candidates for existing skills and, when needed, one semantic capability candidate for reusable work that does not fit a specialized existing skill.
-- Return an empty `candidates` array and `semantic_candidate = null` when the session does not meet the durability and evidence bar.
+- Produce append-only memory candidates for existing skills.
+- Produce capability-evolution proposals when an existing capability should gain a reusable script, wrapper, prompt, runbook, or instruction update.
+- Produce one semantic capability candidate for reusable work that does not fit a specialized existing skill.
+- Return empty arrays and `semantic_candidate = null` when the session does not meet the durability and evidence bar.
 
 Source priority:
 1. Available memory targets define the only valid existing target skills, memory files, section names, and explicit-acceptance gates.
@@ -1241,6 +1290,17 @@ Semantic candidate policy:
 - Preserve the user's primary intent when naming semantic candidates; for example, keep a backend local-stack request under `backend-local-stack-workflow` even if frontend package scripts are only used as sanity checks.
 - `semantic_candidate.default_capability_id` must be a new repo-local capability id, not an existing materialized skill id such as `govkb-...` and not the broad project knowledge steward.
 - `semantic_candidate.facts` must contain concise governed facts with repo-relative paths only when paths are actually relevant.
+
+Capability-evolution proposal policy:
+- Always return `capability_evolution_proposals`; use an empty array when no proposal is justified.
+- Use proposals only for existing capabilities listed in Available memory targets. Use `target_capability` as the repo capability id, not the materialized `govkb-...` skill name.
+- Supported proposal types are `script`, `wrapper`, `prompt`, `runbook`, and `instructions_update`.
+- Output paths must be repo-relative paths under `.governed/capabilities/<target_capability>/`.
+- Proposals must contain only sanitized evidence summaries. Do not include raw transcript text, customer identifiers, production evidence, secrets, local credential paths, or token-like values.
+- Cron must not apply proposals. Set `cron_apply_reason` to explain why maintainer review is required before writing files.
+- Script or wrapper proposals must declare `read_only` or `mutating_with_dry_run`; mutating proposals must include `--dry-run`, `--preview`, or equivalent confirmation behavior.
+- If a safe draft output is obvious and bounded, include it in `draft_output`; otherwise set `draft_output = null`.
+- If no existing capability owns the workflow, do not emit a capability-evolution proposal; use `semantic_candidate` instead.
 
 Available memory targets:
 {chr(10).join(target_lines)}
@@ -1571,7 +1631,11 @@ def write_report(
     failed: list[dict[str, str]],
     dry_run: bool,
     classifier_config: dict[str, str | int | None] | None = None,
+    proposal_stage_requests: list[dict[str, Any]] | None = None,
+    proposal_rejections: list[dict[str, Any]] | None = None,
 ) -> Path:
+    proposal_stage_requests = proposal_stage_requests or []
+    proposal_rejections = proposal_rejections or []
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     report_path = REPORT_DIR / f"{run_id}-report.md"
     run_date = run_id[:10]
@@ -1589,6 +1653,8 @@ def write_report(
         f"- Applied: {len(applied)}",
         f"- Staged: {len(staged)}",
         f"- Capability candidates: {len(candidate_stage_requests)}",
+        f"- Capability evolution proposals: {len(proposal_stage_requests)}",
+        f"- Rejected capability evolution proposals: {len(proposal_rejections)}",
         f"- Rejected: {len(rejected)}",
         f"- Failed sessions: {len(failed)}",
         "",
@@ -1652,6 +1718,38 @@ def write_report(
             lines.append(
                 f"- `{row['session_id']}` | {row['reason']} | project={row['project_root']} | "
                 f"session={row['session_file']}"
+            )
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Capability Evolution Proposals"])
+    if proposal_stage_requests:
+        for row in proposal_stage_requests:
+            output_paths = row.get("output_paths")
+            if isinstance(output_paths, list):
+                output_display = ", ".join(str(item) for item in output_paths[:3])
+            else:
+                output_display = str(output_paths or "")
+            lines.append(
+                f"- `{row.get('proposal_id') or '(pending-id)'}` | target=`{row.get('target_capability')}` | "
+                f"type=`{row.get('proposal_type')}` | safety=`{row.get('safety_class')}` | "
+                f"session=`{row.get('session_id')}` | outputs={output_display}"
+            )
+            purpose = str(row.get("purpose", "")).strip()
+            if purpose:
+                lines.append(f"  Purpose: {purpose[:300]}")
+            reason = str(row.get("reason", "")).strip()
+            if reason:
+                lines.append(f"  Next action: {reason[:300]}")
+    else:
+        lines.append("- None")
+
+    lines.extend(["", "## Rejected Capability Evolution Proposals"])
+    if proposal_rejections:
+        for row in proposal_rejections[:25]:
+            lines.append(
+                f"- target=`{row.get('target_capability')}` | type=`{row.get('proposal_type')}` | "
+                f"session=`{row.get('session_id')}`: {row.get('validation_reason')}"
             )
     else:
         lines.append("- None")
@@ -1859,6 +1957,76 @@ def run_candidate_staging(requests: list[dict[str, Any]]) -> int:
     return failures
 
 
+def run_proposal_staging(requests: list[dict[str, Any]]) -> int:
+    failures = 0
+    for request in requests:
+        project_root = Path(str(request["project_root"])).expanduser().resolve()
+        proposal = request.get("proposal")
+        if not isinstance(proposal, dict):
+            failures += 1
+            log(f"Proposal staging failed for session {request.get('session_id')}: missing proposal payload")
+            continue
+        govkb_dir = project_root / "govkb"
+        cwd = govkb_dir if govkb_dir.is_dir() else project_root
+        proposal_file_path: Path | None = None
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            prefix="govkb-proposal-",
+            suffix=".json",
+            delete=False,
+        ) as proposal_file:
+            json.dump(proposal, proposal_file, ensure_ascii=False, indent=2)
+            proposal_file.write("\n")
+            proposal_file_path = Path(proposal_file.name)
+        thread_name = str(request.get("thread_name", "")).strip()
+        stage_code = (
+            "import json, sys\n"
+            "from pathlib import Path\n"
+            "from govkb.core.proposals import ProposalError, stage_proposal\n"
+            "try:\n"
+            "    result = stage_proposal(\n"
+            "        Path(sys.argv[1]),\n"
+            "        json.loads(Path(sys.argv[2]).read_text(encoding='utf-8')),\n"
+            "        source_run_id=sys.argv[3],\n"
+            "        source_session_id=sys.argv[4],\n"
+            "        source_thread_name=sys.argv[5] or None,\n"
+            "    )\n"
+            "except ProposalError as exc:\n"
+            "    print(f'error: could not stage proposal: {exc}', file=sys.stderr)\n"
+            "    raise SystemExit(1)\n"
+            "action = 'created' if result.created else 'updated'\n"
+            "print(f'{action} proposal {result.proposal_id}: status={result.status} path={result.proposal_root}')\n"
+        )
+        cmd = [
+            sys.executable,
+            "-c",
+            stage_code,
+            str(project_root),
+            str(proposal_file_path),
+            str(request["run_id"]),
+            str(request["session_id"]),
+            thread_name,
+        ]
+        env = govkb_subprocess_env(project_root)
+        log(f"Staging capability-evolution proposal for session {request['session_id']} in {project_root}")
+        try:
+            proc = subprocess.run(cmd, cwd=cwd, env=env, text=True, capture_output=True, check=False, timeout=120)
+        finally:
+            if proposal_file_path is not None:
+                proposal_file_path.unlink(missing_ok=True)
+        if proc.stdout.strip():
+            for line in proc.stdout.strip().splitlines():
+                log(f"govkb proposals stage: {line}")
+        if proc.stderr.strip():
+            for line in proc.stderr.strip().splitlines():
+                log(f"govkb proposals stderr: {line}")
+        if proc.returncode != 0:
+            failures += 1
+            log(f"Proposal staging failed for session {request['session_id']} with exit code {proc.returncode}")
+    return failures
+
+
 def run_candidate_auto_create(project_roots: set[Path]) -> tuple[int, list[dict[str, Any]]]:
     failures = 0
     results: list[dict[str, Any]] = []
@@ -1956,6 +2124,8 @@ def process(args: argparse.Namespace) -> int:
     auto_promote_project_roots: set[Path] = set()
     candidate_auto_create_project_roots: set[Path] = set()
     candidate_stage_requests: dict[tuple[str, str], dict[str, Any]] = {}
+    proposal_stage_requests: dict[tuple[str, str, str], dict[str, Any]] = {}
+    proposal_rejections: list[dict[str, Any]] = []
     retryable_classifier_outage: str | None = None
     if scoped_project_root is not None:
         candidate_auto_create_project_roots.add(scoped_project_root)
@@ -2055,6 +2225,7 @@ def process(args: argparse.Namespace) -> int:
             staged_before = len(staged)
             rejected_before = len(rejected)
             candidate_stage_before = len(candidate_stage_requests)
+            proposal_stage_before = len(proposal_stage_requests)
             result = classify_session(
                 session,
                 prompt_targets,
@@ -2068,6 +2239,11 @@ def process(args: argparse.Namespace) -> int:
             candidates = result.get("candidates", [])
             if not isinstance(candidates, list):
                 raise RuntimeError("classifier returned non-list candidates")
+            capability_proposals = result.get("capability_evolution_proposals", [])
+            if capability_proposals is None:
+                capability_proposals = []
+            if not isinstance(capability_proposals, list):
+                raise RuntimeError("classifier returned non-list capability_evolution_proposals")
             semantic_seed = result.get("semantic_candidate")
             if semantic_seed is not None and not isinstance(semantic_seed, dict):
                 semantic_seed = None
@@ -2102,6 +2278,41 @@ def process(args: argparse.Namespace) -> int:
                     staged.append(candidate)
                 else:
                     rejected.append(candidate)
+            session_project = session_project_root(session)
+            for index, proposal in enumerate(capability_proposals):
+                if not isinstance(proposal, dict):
+                    proposal_rejections.append(
+                        {
+                            "session_id": session.id,
+                            "target_capability": "",
+                            "proposal_type": "",
+                            "validation_reason": "proposal row is not an object",
+                        }
+                    )
+                    continue
+                proposal = dict(proposal)
+                proposal["session_id"] = session.id
+                if session_project is None:
+                    proposal["validation_reason"] = "session has no governed project root"
+                    proposal_rejections.append(proposal)
+                    continue
+                proposal_id = str(proposal.get("proposal_id", "")).strip() or f"{session.id}-proposal-{index + 1}"
+                key = (str(session_project), str(session.path), proposal_id)
+                proposal_stage_requests[key] = {
+                    "run_id": run_id,
+                    "session_id": session.id,
+                    "thread_name": session.thread_name,
+                    "project_root": str(session_project),
+                    "session_file": str(session.path),
+                    "proposal_id": proposal_id,
+                    "target_capability": proposal.get("target_capability", ""),
+                    "proposal_type": proposal.get("proposal_type", ""),
+                    "output_paths": proposal.get("output_paths", []),
+                    "safety_class": proposal.get("safety_class", ""),
+                    "purpose": proposal.get("purpose", ""),
+                    "reason": "review and approve before running `govkb proposals apply`",
+                    "proposal": proposal,
+                }
             if should_stage_capability_candidate(signals):
                 project_root = session_project_root(session)
                 if project_root is not None:
@@ -2127,6 +2338,7 @@ def process(args: argparse.Namespace) -> int:
                 stagedCount=len(staged) - staged_before,
                 rejectedCount=len(rejected) - rejected_before,
                 candidateCount=len(candidate_stage_requests) - candidate_stage_before,
+                proposalCount=len(proposal_stage_requests) - proposal_stage_before,
             )
         except UsageLimitClassificationError as exc:
             deferred.append({"session_id": session.id, "error": str(exc)})
@@ -2173,6 +2385,7 @@ def process(args: argparse.Namespace) -> int:
     staged_patch = write_patch(run_id, "staged", staged_diffs)
     emit_progress(args, "artifact_written", runId=run_id, kind="stagedPatch", path=str(staged_patch))
     candidate_stage_rows = list(candidate_stage_requests.values())
+    proposal_stage_rows = list(proposal_stage_requests.values())
     report_path = write_report(
         run_id,
         discovery,
@@ -2192,6 +2405,8 @@ def process(args: argparse.Namespace) -> int:
             "timeout": getattr(args, "codex_timeout", None),
             "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
         },
+        proposal_stage_rows,
+        proposal_rejections,
     )
     emit_progress(args, "artifact_written", runId=run_id, kind="report", path=str(report_path))
     def emit_finished(status: str) -> None:
@@ -2209,6 +2424,7 @@ def process(args: argparse.Namespace) -> int:
             rejected=len(rejected),
             existingSkillUpdates=len(applied) + len(staged),
             stagedCandidates=len(candidate_stage_rows),
+            stagedProposals=len(proposal_stage_rows),
         )
 
     if not args.dry_run:
@@ -2219,6 +2435,10 @@ def process(args: argparse.Namespace) -> int:
 
         candidate_stage_failures = run_candidate_staging(candidate_stage_rows) if candidate_stage_rows else 0
         if candidate_stage_failures:
+            emit_finished("failed")
+            return 1
+        proposal_stage_failures = run_proposal_staging(proposal_stage_rows) if proposal_stage_rows else 0
+        if proposal_stage_failures:
             emit_finished("failed")
             return 1
         if candidate_auto_create_project_roots:
@@ -2242,6 +2462,8 @@ def process(args: argparse.Namespace) -> int:
                     "timeout": getattr(args, "codex_timeout", None),
                     "codex_home": str(getattr(args, "classifier_codex_home", None) or CODEX_HOME),
                 },
+                proposal_stage_rows,
+                proposal_rejections,
             )
             emit_progress(args, "artifact_written", runId=run_id, kind="report", path=str(report_path))
             if auto_create_failures:

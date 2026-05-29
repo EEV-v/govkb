@@ -15,6 +15,7 @@ from govkb.commands.init import run_init
 from govkb.commands.init_kb import run_init_kb
 from govkb.commands.promote import run_promote
 from govkb.commands.promotions import run_promotions
+from govkb.commands.proposals import run_proposals
 from govkb.commands.remediate import run_remediate
 from govkb.commands.review_memory import run_review_memory
 from govkb.commands.status import run_status
@@ -181,6 +182,25 @@ def build_parser() -> argparse.ArgumentParser:
     candidates_auto_parser.add_argument("--assistant", default="codex", choices=("codex",), help="Assistant to materialize after auto-create.")
     candidates_auto_parser.add_argument("--codex-home", type=Path, help="Codex home override for local materialization.")
     candidates_auto_parser.set_defaults(handler=run_candidates)
+
+    proposals_parser = subparsers.add_parser("proposals", help="Inspect, show, or apply capability-evolution proposals.")
+    proposals_subparsers = proposals_parser.add_subparsers(dest="proposal_action", required=True)
+
+    proposals_list_parser = proposals_subparsers.add_parser("list", help="List staged capability-evolution proposals.")
+    proposals_list_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    proposals_list_parser.add_argument("--json", action="store_true", help="Emit machine-readable proposal summaries.")
+    proposals_list_parser.set_defaults(handler=run_proposals)
+
+    proposals_show_parser = proposals_subparsers.add_parser("show", help="Show one staged capability-evolution proposal.")
+    proposals_show_parser.add_argument("proposal_id", help="Proposal id to show.")
+    proposals_show_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    proposals_show_parser.add_argument("--json", action="store_true", help="Emit machine-readable proposal detail.")
+    proposals_show_parser.set_defaults(handler=run_proposals)
+
+    proposals_apply_parser = proposals_subparsers.add_parser("apply", help="Apply one approved capability-evolution proposal.")
+    proposals_apply_parser.add_argument("proposal_id", help="Proposal id to apply.")
+    proposals_apply_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    proposals_apply_parser.set_defaults(handler=run_proposals)
 
     convert_parser = subparsers.add_parser("convert", help="Convert local assistant artifacts into governed packages.")
     convert_subparsers = convert_parser.add_subparsers(dest="convert_action", required=True)
