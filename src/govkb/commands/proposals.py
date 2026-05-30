@@ -7,6 +7,7 @@ from pathlib import Path
 import sys
 
 from govkb.core.project import resolve_project_root
+from govkb.core.proposal_report import build_proposal_report_payload
 from govkb.core.proposals import ProposalError
 from govkb.core.proposals import apply_proposal
 from govkb.core.proposals import build_proposals_payload
@@ -24,6 +25,8 @@ def run_proposals(args) -> int:
         return _run_show(args)
     if action == "apply":
         return _run_apply(args)
+    if action == "report":
+        return _run_report(args)
     print(f"error: unsupported proposals action: {action}", file=sys.stderr)
     return 1
 
@@ -98,4 +101,30 @@ def _run_apply(args) -> int:
     for output_path in result.output_paths:
         print(f"- wrote {output_path}")
     print(f"Strict validation issues: {result.strict_issue_count}")
+    return 0
+
+
+def _run_report(args) -> int:
+    project_root = resolve_project_root(Path(args.project_root).resolve())
+    payload = build_proposal_report_payload(project_root)
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    summary = payload["summary"]
+    print(f"Project: {payload['projectRoot']}")
+    print(
+        "Proposals: "
+        f"{summary['proposalCount']} | "
+        f"Groups: {summary['groupCount']} | "
+        f"Warnings: {summary['warningCount']}"
+    )
+    print("")
+    for group in payload["groups"]:
+        print(f"{group['id']} action={group['recommendedAction']}")
+        print(f"  proposals: {', '.join(group['proposalIds'])}")
+        print(f"  reason: {group['reason']}")
+        if group["warningCodes"]:
+            print(f"  warnings: {', '.join(group['warningCodes'])}")
+        if group["outputPaths"]:
+            print(f"  outputs: {', '.join(group['outputPaths'])}")
     return 0

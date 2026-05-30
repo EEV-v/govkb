@@ -202,6 +202,11 @@ def build_parser() -> argparse.ArgumentParser:
     proposals_apply_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
     proposals_apply_parser.set_defaults(handler=run_proposals)
 
+    proposals_report_parser = proposals_subparsers.add_parser("report", help="Group staged proposals and show advisory quality warnings.")
+    proposals_report_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    proposals_report_parser.add_argument("--json", action="store_true", help="Emit machine-readable proposal report.")
+    proposals_report_parser.set_defaults(handler=run_proposals)
+
     convert_parser = subparsers.add_parser("convert", help="Convert local assistant artifacts into governed packages.")
     convert_subparsers = convert_parser.add_subparsers(dest="convert_action", required=True)
 

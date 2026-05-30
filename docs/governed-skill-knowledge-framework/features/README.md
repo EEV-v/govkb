@@ -12,3 +12,4 @@ Each feature folder should keep `business.md` as the canonical draft and use der
 - [Governed Skill Contract And Migration - Split Overview](governed-skill-contract-and-migration/business.md)
 - [VS Code Extension UI and Public Distribution](vscode-extension-public-distribution/business.md)
 - [Agentic Architecture Refactoring](agentic-architecture-refactoring/business.md)
+- [Governed Learning Improvements](governed-learning-improvements/business.md)
