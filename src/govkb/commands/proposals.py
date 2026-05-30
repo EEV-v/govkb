@@ -8,6 +8,7 @@ import sys
 
 from govkb.core.project import resolve_project_root
 from govkb.core.proposal_report import build_proposal_report_payload
+from govkb.core.proposal_report import build_proposal_review_payload
 from govkb.core.proposals import ProposalError
 from govkb.core.proposals import apply_proposal
 from govkb.core.proposals import build_proposals_payload
@@ -27,6 +28,8 @@ def run_proposals(args) -> int:
         return _run_apply(args)
     if action == "report":
         return _run_report(args)
+    if action == "review":
+        return _run_review(args)
     print(f"error: unsupported proposals action: {action}", file=sys.stderr)
     return 1
 
@@ -127,4 +130,40 @@ def _run_report(args) -> int:
             print(f"  warnings: {', '.join(group['warningCodes'])}")
         if group["outputPaths"]:
             print(f"  outputs: {', '.join(group['outputPaths'])}")
+    return 0
+
+
+def _run_review(args) -> int:
+    project_root = resolve_project_root(Path(args.project_root).resolve())
+    try:
+        payload = build_proposal_review_payload(project_root, getattr(args, "action", None))
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    if getattr(args, "json", False):
+        print(json.dumps(payload, indent=2, sort_keys=True))
+        return 0
+    summary = payload["summary"]
+    print(f"Project: {payload['projectRoot']}")
+    print(
+        "Review groups: "
+        f"{summary['reviewGroupCount']} of {summary['groupCount']} | "
+        f"Proposals: {summary['proposalCount']} | "
+        f"Warnings: {summary['warningCount']} | "
+        f"Filter: {summary['actionFilter']}"
+    )
+    print("")
+    if not payload["groups"]:
+        print("No proposal groups match the review filter.")
+        return 0
+    for index, group in enumerate(payload["groups"], start=1):
+        print(f"{index}. {group['recommendedAction']} {group['id']}")
+        print(f"   proposals: {', '.join(group['proposalIds'])}")
+        if group["warningCodes"]:
+            print(f"   warnings: {', '.join(group['warningCodes'])}")
+        if group["outputPaths"]:
+            print(f"   outputs: {', '.join(group['outputPaths'])}")
+        print("   next:")
+        for step in group["nextSteps"]:
+            print(f"   - {step}")
     return 0

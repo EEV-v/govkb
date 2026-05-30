@@ -40,6 +40,13 @@ WEAK_VERIFICATION_VALUES = {
     "none",
     "no code execution required",
 }
+REVIEW_ACTIONS = {"inspect-safety", "manual-review", "merge-first", "reject-duplicate"}
+REVIEW_ACTION_PRIORITY = {
+    "inspect-safety": 0,
+    "merge-first": 1,
+    "reject-duplicate": 2,
+    "manual-review": 3,
+}
 
 
 def build_proposal_report_payload(project_root: Path) -> dict[str, Any]:
@@ -59,6 +66,28 @@ def build_proposal_report_payload(project_root: Path) -> dict[str, Any]:
         },
         "groups": groups,
         "proposals": proposals,
+    }
+
+
+def build_proposal_review_payload(project_root: Path, action: str | None = None) -> dict[str, Any]:
+    """Build an actionable read-only maintainer review queue for staged proposals."""
+    report = build_proposal_report_payload(project_root)
+    normalized_action = _normalize_action_filter(action)
+    groups = [
+        _review_group(report["projectRoot"], group)
+        for group in report["groups"]
+        if normalized_action is None or group["recommendedAction"] == normalized_action
+    ]
+    groups.sort(key=lambda group: (group["priority"], group["id"]))
+    return {
+        "schemaVersion": 1,
+        "projectRoot": report["projectRoot"],
+        "summary": {
+            **report["summary"],
+            "reviewGroupCount": len(groups),
+            "actionFilter": normalized_action or "all",
+        },
+        "groups": groups,
     }
 
 
@@ -262,6 +291,68 @@ def _recommended_action(items: list[dict[str, Any]], warning_codes: list[str], o
             return "reject-duplicate"
         return "merge-first"
     return "manual-review"
+
+
+def _review_group(project_root: str, group: dict[str, Any]) -> dict[str, Any]:
+    action = str(group["recommendedAction"])
+    show_commands = [
+        f"govkb proposals show {proposal_id} --project-root {project_root}"
+        for proposal_id in group["proposalIds"]
+    ]
+    return {
+        "id": group["id"],
+        "priority": REVIEW_ACTION_PRIORITY.get(action, 99),
+        "recommendedAction": action,
+        "proposalIds": group["proposalIds"],
+        "targetCapabilities": group["targetCapabilities"],
+        "warningCodes": group["warningCodes"],
+        "outputPaths": group["outputPaths"],
+        "reason": group["reason"],
+        "nextSteps": _review_next_steps(project_root, action, group, show_commands),
+        "commands": show_commands,
+    }
+
+
+def _review_next_steps(
+    project_root: str,
+    action: str,
+    group: dict[str, Any],
+    show_commands: list[str],
+) -> list[str]:
+    if action == "inspect-safety":
+        return [
+            "Inspect every proposal in this group before applying anything.",
+            "Require visible draft output, dry-run or preview behavior for mutating scripts, and focused verification.",
+            *show_commands,
+        ]
+    if action == "merge-first":
+        return [
+            "Compare the related proposals and reconcile them into one maintained artifact before applying.",
+            "Apply only the preferred proposal after stale alternatives are rejected or restaged.",
+            *show_commands,
+        ]
+    if action == "reject-duplicate":
+        return [
+            "Multiple related proposals target the same output path; keep one and reject the duplicate proposal folder.",
+            *show_commands,
+        ]
+    proposal_id = str(group["proposalIds"][0]) if group["proposalIds"] else ""
+    apply_command = f"govkb proposals apply {proposal_id} --project-root {project_root}" if proposal_id else ""
+    steps = [
+        "Review the proposal body and draft output.",
+        *show_commands,
+    ]
+    if apply_command:
+        steps.append(apply_command)
+    return steps
+
+
+def _normalize_action_filter(action: str | None) -> str | None:
+    if action in (None, "", "all"):
+        return None
+    if action not in REVIEW_ACTIONS:
+        raise ValueError(f"unsupported review action filter: {action}")
+    return action
 
 
 def _recommendation_reason(

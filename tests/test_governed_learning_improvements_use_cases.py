@@ -12,6 +12,7 @@ import unittest
 
 from govkb.commands.proposals import run_proposals
 from govkb.core.proposal_report import build_proposal_report_payload
+from govkb.core.proposal_report import build_proposal_review_payload
 from govkb.core.proposals import stage_proposal
 
 try:
@@ -130,6 +131,61 @@ class GovernedLearningImprovementsUseCaseTests(unittest.TestCase):
             self.assertIn("Proposals: 1", text)
             self.assertIn("action=manual-review", text)
             self.assertIn("qa-dvca-aggregate-payout-e2e-runbook", text)
+
+    def test_review_queue_prioritizes_safety_and_emits_next_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper = MemoryReviewCapabilityEvolutionTestHelper(self, Path(temp_dir))
+            project_root = helper.seed_project()
+            helper.seed_capability("clearing-prod-to-staging-replay")
+            helper.seed_capability("clearing-qa-on-staging")
+            self._stage_script_without_draft(helper)
+            self._stage_runbook(
+                helper,
+                proposal_id="qa-dvca-aggregate-payout-e2e-runbook",
+                target_capability="clearing-qa-on-staging",
+                output_path=".governed/capabilities/clearing-qa-on-staging/runbooks/dvca-aggregate-payout-e2e.md",
+                purpose="Capture reusable DVCA aggregate dividend payout E2E QA runbook.",
+            )
+
+            payload = build_proposal_review_payload(project_root)
+
+            self.assertEqual(payload["groups"][0]["recommendedAction"], "inspect-safety")
+            self.assertIn("commands", payload["groups"][0])
+            self.assertIn("govkb proposals show", payload["groups"][0]["commands"][0])
+            manual_group = next(group for group in payload["groups"] if group["recommendedAction"] == "manual-review")
+            self.assertTrue(any("govkb proposals apply" in step for step in manual_group["nextSteps"]))
+
+    def test_review_command_filters_by_recommended_action(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper = MemoryReviewCapabilityEvolutionTestHelper(self, Path(temp_dir))
+            project_root = helper.seed_project()
+            helper.seed_capability("clearing-prod-to-staging-replay")
+            helper.seed_capability("clearing-qa-on-staging")
+            self._stage_script_without_draft(helper)
+            self._stage_runbook(
+                helper,
+                proposal_id="qa-dvca-aggregate-payout-e2e-runbook",
+                target_capability="clearing-qa-on-staging",
+                output_path=".governed/capabilities/clearing-qa-on-staging/runbooks/dvca-aggregate-payout-e2e.md",
+                purpose="Capture reusable DVCA aggregate dividend payout E2E QA runbook.",
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_proposals(
+                    argparse.Namespace(
+                        proposal_action="review",
+                        project_root=project_root,
+                        action="inspect-safety",
+                        json=True,
+                    )
+                )
+
+            self.assertEqual(exit_code, 0)
+            payload = json.loads(output.getvalue())
+            self.assertEqual(payload["summary"]["actionFilter"], "inspect-safety")
+            self.assertEqual(payload["summary"]["reviewGroupCount"], 1)
+            self.assertEqual(payload["groups"][0]["recommendedAction"], "inspect-safety")
 
     def _stage_runbook(
         self,

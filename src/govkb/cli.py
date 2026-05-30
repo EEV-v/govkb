@@ -207,6 +207,17 @@ def build_parser() -> argparse.ArgumentParser:
     proposals_report_parser.add_argument("--json", action="store_true", help="Emit machine-readable proposal report.")
     proposals_report_parser.set_defaults(handler=run_proposals)
 
+    proposals_review_parser = proposals_subparsers.add_parser("review", help="Show the actionable proposal review queue.")
+    proposals_review_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    proposals_review_parser.add_argument(
+        "--action",
+        choices=("all", "inspect-safety", "manual-review", "merge-first", "reject-duplicate"),
+        default="all",
+        help="Limit the queue to one recommended action.",
+    )
+    proposals_review_parser.add_argument("--json", action="store_true", help="Emit machine-readable review steps.")
+    proposals_review_parser.set_defaults(handler=run_proposals)
+
     convert_parser = subparsers.add_parser("convert", help="Convert local assistant artifacts into governed packages.")
     convert_subparsers = convert_parser.add_subparsers(dest="convert_action", required=True)
 

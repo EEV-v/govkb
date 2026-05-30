@@ -8,8 +8,11 @@ Phase 0 adds a read-only proposal report for staged governed learning artifacts:
 
 - `govkb proposals report [project_root]`
 - `govkb proposals report [project_root] --json`
+- `govkb proposals review [project_root]`
+- `govkb proposals review [project_root] --action inspect-safety`
+- `govkb proposals review [project_root] --json`
 
-The report groups related staged proposals, keeps unrelated proposals separate, surfaces advisory quality warnings, and recommends the next review action per group.
+The report groups related staged proposals, keeps unrelated proposals separate, surfaces advisory quality warnings, and recommends the next review action per group. The review command turns the same read-only data into maintainer-facing next steps with concrete `govkb proposals show` and, when appropriate, `govkb proposals apply` commands.
 
 Implemented warning coverage:
 
@@ -51,6 +54,7 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest tests.test_governed
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest discover -s tests -v
 git diff --check
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals report --help
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals review /home/ev/code/Clearing --action inspect-safety
 ```
 
 Result:
