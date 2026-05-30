@@ -21,6 +21,7 @@ from govkb.commands.remediate import run_remediate
 from govkb.commands.review_memory import run_review_memory
 from govkb.commands.status import run_status
 from govkb.commands.validate import run_validate
+from govkb.core.proposals import ALLOWED_DECISION_STATUSES
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -190,7 +191,7 @@ def build_parser() -> argparse.ArgumentParser:
     candidates_auto_parser.add_argument("--codex-home", type=Path, help="Codex home override for local materialization.")
     candidates_auto_parser.set_defaults(handler=run_candidates)
 
-    proposals_parser = subparsers.add_parser("proposals", help="Inspect, show, or apply capability-evolution proposals.")
+    proposals_parser = subparsers.add_parser("proposals", help="Inspect, approve, decide, or apply capability-evolution proposals.")
     proposals_subparsers = proposals_parser.add_subparsers(dest="proposal_action", required=True)
 
     proposals_list_parser = proposals_subparsers.add_parser("list", help="List staged capability-evolution proposals.")
@@ -204,10 +205,30 @@ def build_parser() -> argparse.ArgumentParser:
     proposals_show_parser.add_argument("--json", action="store_true", help="Emit machine-readable proposal detail.")
     proposals_show_parser.set_defaults(handler=run_proposals)
 
+    proposals_approve_parser = proposals_subparsers.add_parser("approve", help="Approve one proposal for application.")
+    proposals_approve_parser.add_argument("proposal_id", help="Proposal id to approve.")
+    proposals_approve_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    proposals_approve_parser.add_argument("--approver", required=True, help="Reviewer or operator approving this proposal.")
+    proposals_approve_parser.add_argument("--approved-at", help="Approval timestamp override; defaults to current UTC time.")
+    proposals_approve_parser.add_argument("--notes", help="Optional approval notes.")
+    proposals_approve_parser.add_argument("--json", action="store_true", help="Emit machine-readable approval result.")
+    proposals_approve_parser.set_defaults(handler=run_proposals)
+
     proposals_apply_parser = proposals_subparsers.add_parser("apply", help="Apply one approved capability-evolution proposal.")
     proposals_apply_parser.add_argument("proposal_id", help="Proposal id to apply.")
     proposals_apply_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
     proposals_apply_parser.set_defaults(handler=run_proposals)
+
+    proposals_decide_parser = proposals_subparsers.add_parser("decide", help="Record a non-apply review decision for one proposal.")
+    proposals_decide_parser.add_argument("proposal_id", help="Proposal id to decide.")
+    proposals_decide_parser.add_argument("--project-root", type=Path, default=Path.cwd(), help="Project root that owns .governed.")
+    proposals_decide_parser.add_argument("--status", required=True, choices=tuple(sorted(ALLOWED_DECISION_STATUSES)), help="Review decision status.")
+    proposals_decide_parser.add_argument("--reviewer", required=True, help="Reviewer recording this decision.")
+    proposals_decide_parser.add_argument("--reason", required=True, help="Why this proposal is not being applied now.")
+    proposals_decide_parser.add_argument("--next-action", help="What should happen before the proposal can move forward.")
+    proposals_decide_parser.add_argument("--reviewed-at", help="Review timestamp override; defaults to current UTC time.")
+    proposals_decide_parser.add_argument("--json", action="store_true", help="Emit machine-readable decision result.")
+    proposals_decide_parser.set_defaults(handler=run_proposals)
 
     proposals_report_parser = proposals_subparsers.add_parser("report", help="Group staged proposals and show advisory quality warnings.")
     proposals_report_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")

@@ -132,6 +132,153 @@ class ProposalCoreCommandTests(unittest.TestCase):
                 / "proposal.toml"
             ).read_text(encoding="utf-8")
             self.assertIn('status = "applied"', metadata)
+            body = (
+                project_root
+                / ".governed"
+                / "review-proposals"
+                / "release-validation-script"
+                / "proposal.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("- Status: applied", body)
+
+    def test_approve_command_records_review_metadata_and_enables_apply(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper = MemoryReviewCapabilityEvolutionTestHelper(self, Path(temp_dir))
+            project_root = helper.seed_project()
+            helper.seed_capability()
+            stage_proposal(
+                project_root,
+                helper.proposal_payload(),
+                source_run_id="run-1",
+                source_session_id="session-1",
+            )
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_proposals(
+                    argparse.Namespace(
+                        proposal_action="approve",
+                        proposal_id="release-validation-script",
+                        project_root=project_root,
+                        approver="test-reviewer",
+                        approved_at="2026-05-28T00:00:00Z",
+                        notes="Ready after maintainer review.",
+                        json=False,
+                    )
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Approved proposal release-validation-script", output.getvalue())
+            metadata_path = project_root / ".governed" / "review-proposals" / "release-validation-script" / "proposal.toml"
+            metadata = metadata_path.read_text(encoding="utf-8")
+            self.assertIn('status = "approved"', metadata)
+            self.assertIn('approver = "test-reviewer"', metadata)
+            self.assertIn('approved_at = "2026-05-28T00:00:00Z"', metadata)
+            self.assertIn('notes = "Ready after maintainer review."', metadata)
+
+            apply_output = io.StringIO()
+            with redirect_stdout(apply_output):
+                apply_exit = run_proposals(
+                    argparse.Namespace(
+                        proposal_action="apply",
+                        proposal_id="release-validation-script",
+                        project_root=project_root,
+                    )
+                )
+            self.assertEqual(apply_exit, 0)
+            self.assertIn("Applied proposal release-validation-script", apply_output.getvalue())
+
+    def test_decide_command_records_non_apply_review_decision(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper = MemoryReviewCapabilityEvolutionTestHelper(self, Path(temp_dir))
+            project_root = helper.seed_project()
+            helper.seed_capability()
+            stage_proposal(
+                project_root,
+                helper.proposal_payload(),
+                source_run_id="run-1",
+                source_session_id="session-1",
+            )
+            helper.approve_proposal("release-validation-script")
+
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = run_proposals(
+                    argparse.Namespace(
+                        proposal_action="decide",
+                        proposal_id="release-validation-script",
+                        project_root=project_root,
+                        status="needs-rework",
+                        reviewer="test-reviewer",
+                        reviewed_at="2026-05-28T01:00:00Z",
+                        reason="Draft needs a real verification command.",
+                        next_action="Replace the draft and rerun proposal review.",
+                        json=False,
+                    )
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Recorded proposal decision release-validation-script", output.getvalue())
+            metadata = (
+                project_root
+                / ".governed"
+                / "review-proposals"
+                / "release-validation-script"
+                / "proposal.toml"
+            ).read_text(encoding="utf-8")
+            self.assertIn('status = "needs-rework"', metadata)
+            self.assertIn("[approval]", metadata)
+            self.assertIn('status = "pending"', metadata)
+            self.assertIn("[review]", metadata)
+            self.assertIn('decision = "needs-rework"', metadata)
+            self.assertIn('reviewer = "test-reviewer"', metadata)
+            self.assertIn('reason = "Draft needs a real verification command."', metadata)
+            body = (
+                project_root
+                / ".governed"
+                / "review-proposals"
+                / "release-validation-script"
+                / "proposal.md"
+            ).read_text(encoding="utf-8")
+            self.assertIn("- Status: needs-rework", body)
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                apply_exit = run_proposals(
+                    argparse.Namespace(
+                        proposal_action="apply",
+                        proposal_id="release-validation-script",
+                        project_root=project_root,
+                    )
+                )
+            self.assertEqual(apply_exit, 1)
+            self.assertIn("proposal must be approved before apply", stderr.getvalue())
+
+    def test_approve_rejects_proposal_without_draft_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper = MemoryReviewCapabilityEvolutionTestHelper(self, Path(temp_dir))
+            project_root = helper.seed_project()
+            helper.seed_capability()
+            payload = helper.proposal_payload()
+            payload.pop("draft_output")
+            stage_proposal(project_root, payload, source_run_id="run-1", source_session_id="session-1")
+
+            stderr = io.StringIO()
+            with redirect_stderr(stderr):
+                exit_code = run_proposals(
+                    argparse.Namespace(
+                        proposal_action="approve",
+                        proposal_id="release-validation-script",
+                        project_root=project_root,
+                        approver="test-reviewer",
+                        approved_at=None,
+                        notes=None,
+                        json=False,
+                    )
+                )
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("proposal has no draft output", stderr.getvalue())
 
     def test_invalid_proposal_paths_and_sensitive_content_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

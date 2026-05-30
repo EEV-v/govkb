@@ -10,8 +10,10 @@ from govkb.core.project import resolve_project_root
 from govkb.core.proposal_report import build_proposal_report_payload
 from govkb.core.proposal_report import build_proposal_review_payload
 from govkb.core.proposals import ProposalError
+from govkb.core.proposals import approve_proposal
 from govkb.core.proposals import apply_proposal
 from govkb.core.proposals import build_proposals_payload
+from govkb.core.proposals import decide_proposal
 from govkb.core.proposals import list_proposals
 from govkb.core.proposals import load_proposal
 from govkb.core.proposals import proposal_summary
@@ -24,8 +26,12 @@ def run_proposals(args) -> int:
         return _run_list(args)
     if action == "show":
         return _run_show(args)
+    if action == "approve":
+        return _run_approve(args)
     if action == "apply":
         return _run_apply(args)
+    if action == "decide":
+        return _run_decide(args)
     if action == "report":
         return _run_report(args)
     if action == "review":
@@ -104,6 +110,77 @@ def _run_apply(args) -> int:
     for output_path in result.output_paths:
         print(f"- wrote {output_path}")
     print(f"Strict validation issues: {result.strict_issue_count}")
+    return 0
+
+
+def _run_approve(args) -> int:
+    project_root = resolve_project_root(Path(args.project_root).resolve())
+    try:
+        result = approve_proposal(
+            project_root,
+            args.proposal_id,
+            approver=args.approver,
+            approved_at=getattr(args, "approved_at", None),
+            notes=getattr(args, "notes", None),
+        )
+    except ProposalError as exc:
+        print(f"error: could not approve proposal: {exc}", file=sys.stderr)
+        return 1
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                {
+                    "proposalId": result.proposal_id,
+                    "proposalRoot": str(result.proposal_root),
+                    "status": result.status,
+                    "approver": result.approver,
+                    "approvedAt": result.approved_at,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    print(f"Approved proposal {result.proposal_id}: path={result.proposal_root}")
+    print(f"- approver: {result.approver}")
+    print(f"- approved_at: {result.approved_at}")
+    return 0
+
+
+def _run_decide(args) -> int:
+    project_root = resolve_project_root(Path(args.project_root).resolve())
+    try:
+        result = decide_proposal(
+            project_root,
+            args.proposal_id,
+            status=args.status,
+            reviewer=args.reviewer,
+            reason=args.reason,
+            next_action=getattr(args, "next_action", None),
+            reviewed_at=getattr(args, "reviewed_at", None),
+        )
+    except ProposalError as exc:
+        print(f"error: could not decide proposal: {exc}", file=sys.stderr)
+        return 1
+    if getattr(args, "json", False):
+        print(
+            json.dumps(
+                {
+                    "proposalId": result.proposal_id,
+                    "proposalRoot": str(result.proposal_root),
+                    "status": result.status,
+                    "reviewer": result.reviewer,
+                    "reviewedAt": result.reviewed_at,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
+        return 0
+    print(f"Recorded proposal decision {result.proposal_id}: path={result.proposal_root}")
+    print(f"- status: {result.status}")
+    print(f"- reviewer: {result.reviewer}")
+    print(f"- reviewed_at: {result.reviewed_at}")
     return 0
 
 

@@ -32,6 +32,13 @@ ALLOWED_SAFETY_CLASSES = {
     "prompt_only",
     "instructions_only",
 }
+ALLOWED_DECISION_STATUSES = {
+    "needs-rework",
+    "merge-required",
+    "needs-evidence",
+    "superseded",
+    "rejected",
+}
 SCRIPT_TYPES = {"script", "wrapper"}
 MUTATING_PATTERNS = (
     re.compile(r"\brm\s+-"),
@@ -91,6 +98,28 @@ class ProposalApplyResult:
     proposal_root: Path
     output_paths: tuple[Path, ...]
     strict_issue_count: int
+
+
+@dataclass(frozen=True)
+class ProposalApprovalResult:
+    """Result of approving one proposal for application."""
+
+    proposal_id: str
+    proposal_root: Path
+    approver: str
+    approved_at: str
+    status: str
+
+
+@dataclass(frozen=True)
+class ProposalDecisionResult:
+    """Result of recording a review decision for one proposal."""
+
+    proposal_id: str
+    proposal_root: Path
+    status: str
+    reviewer: str
+    reviewed_at: str
 
 
 def proposals_root(project_root: Path) -> Path:
@@ -240,6 +269,7 @@ def apply_proposal(project_root: Path, proposal_id: str) -> ProposalApplyResult:
             "strict_issue_count": len(strict_result.issues),
         }
         _write_metadata(proposal_root / "proposal.toml", applied)
+        _update_proposal_body_status(proposal_root, "applied")
         return ProposalApplyResult(
             proposal_id=str(metadata["id"]),
             proposal_root=proposal_root,
@@ -249,6 +279,107 @@ def apply_proposal(project_root: Path, proposal_id: str) -> ProposalApplyResult:
     except Exception:
         _restore_outputs(backups)
         raise
+
+
+def approve_proposal(
+    project_root: Path,
+    proposal_id: str,
+    *,
+    approver: str,
+    approved_at: str | None = None,
+    notes: str | None = None,
+) -> ProposalApprovalResult:
+    """Mark one proposal as approved after validating its staged artifact."""
+    resolved_root = resolve_project_root(project_root).resolve()
+    proposal_root, data = load_proposal(resolved_root, proposal_id)
+    if _string(data.get("status")) == "applied":
+        raise ProposalError("cannot approve an already applied proposal")
+
+    approver = approver.strip()
+    if not approver:
+        raise ProposalError("proposal approval requires approver")
+
+    metadata = _normalize_loaded_metadata(resolved_root, data)
+    draft_output = _load_draft_output(proposal_root)
+    _validate_safe_text(draft_output, "draft-output.md")
+    _validate_script_safety(metadata, draft_output)
+
+    approved = dict(data)
+    approved["status"] = "approved"
+    approved["updated_at"] = iso_utc_now()
+    timestamp = approved_at.strip() if isinstance(approved_at, str) and approved_at.strip() else approved["updated_at"]
+    approval = dict(approved.get("approval") if isinstance(approved.get("approval"), dict) else {})
+    approval["status"] = "approved"
+    approval["approver"] = approver
+    approval["approved_at"] = timestamp
+    if notes is not None and notes.strip():
+        approval["notes"] = notes.strip()
+    approved["approval"] = approval
+    _write_metadata(proposal_root / "proposal.toml", approved)
+    _update_proposal_body_status(proposal_root, "approved")
+    return ProposalApprovalResult(
+        proposal_id=str(metadata["id"]),
+        proposal_root=proposal_root,
+        approver=approver,
+        approved_at=timestamp,
+        status="approved",
+    )
+
+
+def decide_proposal(
+    project_root: Path,
+    proposal_id: str,
+    *,
+    status: str,
+    reviewer: str,
+    reason: str,
+    next_action: str | None = None,
+    reviewed_at: str | None = None,
+) -> ProposalDecisionResult:
+    """Record a non-apply review decision for one proposal."""
+    resolved_root = resolve_project_root(project_root).resolve()
+    proposal_root, data = load_proposal(resolved_root, proposal_id)
+    if _string(data.get("status")) == "applied":
+        raise ProposalError("cannot decide an already applied proposal")
+
+    status = status.strip()
+    if status not in ALLOWED_DECISION_STATUSES:
+        allowed = ", ".join(sorted(ALLOWED_DECISION_STATUSES))
+        raise ProposalError(f"unsupported proposal decision status: {status}; expected one of: {allowed}")
+    reviewer = reviewer.strip()
+    if not reviewer:
+        raise ProposalError("proposal decision requires reviewer")
+    reason = reason.strip()
+    if not reason:
+        raise ProposalError("proposal decision requires reason")
+    if next_action is not None:
+        next_action = next_action.strip()
+
+    decided = dict(data)
+    decided["status"] = status
+    decided["updated_at"] = iso_utc_now()
+    timestamp = reviewed_at.strip() if isinstance(reviewed_at, str) and reviewed_at.strip() else decided["updated_at"]
+    approval = dict(decided.get("approval") if isinstance(decided.get("approval"), dict) else {})
+    if approval:
+        approval["status"] = "pending"
+        decided["approval"] = approval
+    review = dict(decided.get("review") if isinstance(decided.get("review"), dict) else {})
+    review["decision"] = status
+    review["reviewer"] = reviewer
+    review["reviewed_at"] = timestamp
+    review["reason"] = reason
+    if next_action:
+        review["next_action"] = next_action
+    decided["review"] = review
+    _write_metadata(proposal_root / "proposal.toml", decided)
+    _update_proposal_body_status(proposal_root, status)
+    return ProposalDecisionResult(
+        proposal_id=_string(decided.get("id")) or proposal_root.name,
+        proposal_root=proposal_root,
+        status=status,
+        reviewer=reviewer,
+        reviewed_at=timestamp,
+    )
 
 
 def _normalize_stage_metadata(
@@ -345,6 +476,16 @@ def _validate_approval(data: dict[str, Any]) -> None:
         raise ProposalError("proposal must be approved before apply")
     if not approver or not approved_at:
         raise ProposalError("proposal approval requires approver and approved_at")
+
+
+def _load_draft_output(proposal_root: Path) -> str:
+    draft_path = proposal_root / "draft-output.md"
+    if not draft_path.is_file():
+        raise ProposalError(f"proposal has no draft output: {draft_path}")
+    draft_output = draft_path.read_text(encoding="utf-8")
+    if not draft_output.strip():
+        raise ProposalError(f"proposal draft output is empty: {draft_path}")
+    return draft_output
 
 
 def _normalize_output_paths(project_root: Path, target_capability: str, raw_paths: Any) -> tuple[str, ...]:
@@ -472,6 +613,12 @@ def _write_metadata(path: Path, data: dict[str, Any]) -> None:
         for key in ("status", "approver", "reviewer", "approved_at", "notes"):
             if key in approval:
                 lines.append(f"{key} = {_toml_value(approval[key])}")
+    review = data.get("review")
+    if isinstance(review, dict):
+        lines.extend(["", "[review]"])
+        for key in ("decision", "reviewer", "reviewed_at", "reason", "next_action"):
+            if key in review:
+                lines.append(f"{key} = {_toml_value(review[key])}")
     application = data.get("application")
     if isinstance(application, dict):
         lines.extend(["", "[application]"])
@@ -479,6 +626,18 @@ def _write_metadata(path: Path, data: dict[str, Any]) -> None:
             if key in application:
                 lines.append(f"{key} = {_toml_value(application[key])}")
     _atomic_write_text(path, "\n".join(lines).rstrip() + "\n")
+
+
+def _update_proposal_body_status(proposal_root: Path, status: str) -> None:
+    body_path = proposal_root / "proposal.md"
+    if not body_path.is_file():
+        return
+    lines = body_path.read_text(encoding="utf-8").splitlines()
+    for index, line in enumerate(lines):
+        if line.startswith("- Status: "):
+            lines[index] = f"- Status: {status}"
+            _atomic_write_text(body_path, "\n".join(lines).rstrip() + "\n")
+            return
 
 
 def _atomic_write_text(path: Path, text: str) -> None:
