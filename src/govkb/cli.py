@@ -10,6 +10,7 @@ from govkb.commands.capabilities import run_capabilities
 from govkb.commands.candidates import run_candidates
 from govkb.commands.convert import run_convert
 from govkb.commands.create_capability import run_create_capability
+from govkb.commands.doctor import run_doctor
 from govkb.commands.install import run_install
 from govkb.commands.init import run_init
 from govkb.commands.init_kb import run_init_kb
@@ -101,6 +102,12 @@ def build_parser() -> argparse.ArgumentParser:
     status_parser.add_argument("--codex-home", type=Path, help="Codex home override for install-state inspection.")
     status_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for extension integrations.")
     status_parser.set_defaults(handler=run_status)
+
+    doctor_parser = subparsers.add_parser("doctor", help="Show read-only GovKB health, cron, and proposal diagnostics.")
+    doctor_parser.add_argument("project_root", nargs="?", type=Path, default=Path.cwd(), help="Project root to inspect.")
+    doctor_parser.add_argument("--codex-home", type=Path, help="Codex home override for local diagnostics.")
+    doctor_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON for extension integrations.")
+    doctor_parser.set_defaults(handler=run_doctor)
 
     capabilities_parser = subparsers.add_parser("capabilities", help="List, rename, or merge governed capabilities.")
     capabilities_subparsers = capabilities_parser.add_subparsers(dest="capability_action", required=True)

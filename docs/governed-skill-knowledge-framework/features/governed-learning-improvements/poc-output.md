@@ -19,7 +19,7 @@ Planning PoC confirms that GovKB already has the source surfaces needed for this
 |---|---|---|---|
 | A-1 | Passed | `build_proposal_report_payload`, `build_proposal_review_payload`, and focused tests exist. | Grouping reuses loaded proposal metadata and remains read-only. |
 | A-2 | Passed | Existing safety metadata includes type, safety class, confidence, verification command, outputs, and draft output. | Quality warnings are implemented as advisory report fields. |
-| A-3 | Partial | Status JSON exists; memory-review reports and state exist in generated local output. | Need a formal health command and temp fixtures. |
+| A-3 | Passed | `govkb doctor` combines status JSON, memory-review state/report files, proposal queue summary, install state, and cron detection. | Implemented in Phase 1 with temp fixtures. |
 | A-4 | Partial | `reviewAfter` and row filtering points exist. | Need conservative self-noise tests. |
 | A-5 | Partial | Capability files and staged proposals expose enough artifact presence. | Need level definitions and tests. |
 | A-6 | Partial | VS Code package metadata and install-state revisions exist. | Need doctor command JSON before UI. |
@@ -37,7 +37,7 @@ Planning PoC confirms that GovKB already has the source surfaces needed for this
 
 | Gap | Impact |
 |---|---|
-| Health, maturity, and doctor payload fixtures do not exist yet. | Deferred to later phases. |
+| Maturity payload fixtures do not exist yet. | Deferred to later phases. |
 | VS Code UI scope is not finalized. | Keep UI out of Phase 0. |
 
 ## Recommendation
