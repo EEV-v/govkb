@@ -63,6 +63,7 @@ const PREVIEW_PROMOTION_CLEANUP_ACTION = "GovKB: Preview Promotion Cleanup";
 const MARK_PROMOTION_ACCEPTED_ACTION = "GovKB: Mark Promotion Accepted";
 const CONVERT_SKILL_ACTION = "GovKB: Convert One Existing Skill To Governed";
 const ENTER_SKILL_MANUALLY_ACTION = "Enter skill name or path manually";
+const LEARNING_REVIEW_RUN_KEY = "learningReview";
 
 function settingsFromVscode() {
   const settings = withResolvedGovkbRuntime(resolveSettings(vscode.workspace.getConfiguration("govkb")));
@@ -1380,7 +1381,7 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
     vscode.commands.registerCommand("govkb.reviewMemoryDryRun", async () => {
-      await runWithProgress(commandState, output, "reviewMemoryDryRun", "Review Memory Dry Run", async (progress) => {
+      await runWithProgress(commandState, output, LEARNING_REVIEW_RUN_KEY, "Review Memory Dry Run", async (progress) => {
         if (!(await requireTrusted(output))) {
           return;
         }
@@ -1410,7 +1411,7 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
     vscode.commands.registerCommand("govkb.reviewLearningDryRun", async () => {
-      await runWithProgress(commandState, output, "reviewLearningDryRun", "Review Learning Dry Run", async (progress) => {
+      await runWithProgress(commandState, output, LEARNING_REVIEW_RUN_KEY, "Review Learning Dry Run", async (progress) => {
         if (!(await requireTrusted(output))) {
           return;
         }
@@ -1440,7 +1441,7 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
     vscode.commands.registerCommand("govkb.reviewMemoryApply", async () => {
-      await runWithProgress(commandState, output, "reviewMemoryApply", "Review Memory Apply", async (progress) => {
+      await runWithProgress(commandState, output, LEARNING_REVIEW_RUN_KEY, "Review Memory Apply", async (progress) => {
         if (!(await requireTrusted(output))) {
           return;
         }
@@ -1472,7 +1473,7 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }),
     vscode.commands.registerCommand("govkb.reviewLearningApply", async () => {
-      await runWithProgress(commandState, output, "reviewLearningApply", "Review Learning Apply", async (progress) => {
+      await runWithProgress(commandState, output, LEARNING_REVIEW_RUN_KEY, "Review Learning Apply", async (progress) => {
         if (!(await requireTrusted(output))) {
           return;
         }

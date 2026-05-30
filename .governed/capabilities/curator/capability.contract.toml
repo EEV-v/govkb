@@ -1,0 +1,68 @@
+contract_version = 1
+
+[capability]
+id = "curator"
+name = "GovKB Curator"
+governed = true
+description = "Repeatable GovKB project-state curator for reviewing learning, promotions, proposals, candidates, validation, materialized skill refresh, and clean next-step reporting."
+
+[routing]
+aliases = ["curator", "govkb curator", "govkb-curator", "knowledge curator"]
+hints = [
+  "govkb state",
+  "learning review",
+  "review memory",
+  "promotion digest",
+  "proposal review",
+  "candidate capability",
+  "finalize accepted learning",
+  "apply governed skills",
+  "validate governed package",
+  "clean up promotions",
+]
+negative_hints = [
+  "domain bugfix",
+  "feature implementation",
+  "prompt engineering",
+  "raw transcript analysis",
+]
+
+[memory]
+enabled = true
+auto_apply_min_confidence = 0.85
+requires_explicit_acceptance = false
+
+[memory.targets.main]
+path = "references/long-term-memory.md"
+sections = [
+  "Working Agreement",
+  "Operating Flow",
+  "Commands And Verification",
+  "Safety And Apply Policy",
+  "State Interpretation",
+  "Output Contract",
+  "Code And Docs Map",
+]
+
+[bootstrap]
+profile = "workflow"
+repo_roots = ["."]
+authority_paths = [".governed/project.toml", ".governed/capabilities"]
+seed_paths = [".governed/project.toml", ".governed/capabilities", ".governed/adapters"]
+
+[kb_health]
+requires_verification_commands = true
+requires_repo_map = true
+required_sections = [
+  "Working Agreement",
+  "Operating Flow",
+  "Commands And Verification",
+  "Safety And Apply Policy",
+  "State Interpretation",
+  "Output Contract",
+  "Code And Docs Map",
+]
+
+[lifecycle]
+state = "strict-valid"
+scope_justification = "Project-level GovKB lifecycle operation is repeated enough to need a dedicated governed capability instead of expanding the broad project steward."

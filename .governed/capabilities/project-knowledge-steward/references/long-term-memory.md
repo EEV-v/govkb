@@ -14,15 +14,8 @@
 
 ## Stable Workflows
 
-
-
-
-
-
-
-
-
-- Add recurring project workflows here after they prove reusable across sessions.
+- Use feature folders under `docs/governed-skill-knowledge-framework/features/` for durable GovKB feature planning, implementation evidence, review, release notes, and sign-off.
+- Keep reusable GovKB lifecycle operation in the `curator` capability instead of expanding the broad project steward.
 
 ## Commands And Verification
 
@@ -39,15 +32,8 @@
 
 ## Repo Conventions
 
-
-
-
-
-
-
-
-
-- Add project-specific conventions here when they affect how future work should be done.
+- Keep governed package definitions under `.governed/capabilities/`; materialized skills under the local Codex home are generated artifacts, not the durable source of truth.
+- Keep VS Code extension source under `vscode-extension/src/` and compiled output under `vscode-extension/out/`.
 
 ## Code And Docs Map
 
@@ -73,15 +59,9 @@
 
 ## Authority Rules
 
-
-
-
-
-
-
-
-
-- Add authority rules here when one governed file should win over broader docs.
+- Capability contract files define routing, memory targets, lifecycle state, and quality requirements for governed capabilities.
+- Capability instruction files define the active skill instructions materialized into Codex.
+- Capability long-term memory files are the durable memory source for governed capabilities.
 
 ## Candidate Skill Signals
 
