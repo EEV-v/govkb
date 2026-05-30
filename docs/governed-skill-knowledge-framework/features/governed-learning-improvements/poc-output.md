@@ -1,6 +1,6 @@
 # Governed Learning Improvements - PoC Output
 
-Last updated: 2026-05-29
+Last updated: 2026-05-30
 
 ## Summary
 
@@ -17,13 +17,13 @@ Planning PoC confirms that GovKB already has the source surfaces needed for this
 
 | Assertion | Result | Evidence | Notes |
 |---|---|---|---|
-| A-1 | Passed | `stage_proposal`, `load_proposal`, `build_proposals_payload` exist. | Grouping can reuse loaded proposal metadata. |
-| A-2 | Passed | Existing safety metadata includes type, safety class, confidence, verification command, outputs, and draft output. | Quality scoring can be read-only. |
+| A-1 | Passed | `build_proposal_report_payload`, `build_proposal_review_payload`, and focused tests exist. | Grouping reuses loaded proposal metadata and remains read-only. |
+| A-2 | Passed | Existing safety metadata includes type, safety class, confidence, verification command, outputs, and draft output. | Quality warnings are implemented as advisory report fields. |
 | A-3 | Partial | Status JSON exists; memory-review reports and state exist in generated local output. | Need a formal health command and temp fixtures. |
 | A-4 | Partial | `reviewAfter` and row filtering points exist. | Need conservative self-noise tests. |
 | A-5 | Partial | Capability files and staged proposals expose enough artifact presence. | Need level definitions and tests. |
 | A-6 | Partial | VS Code package metadata and install-state revisions exist. | Need doctor command JSON before UI. |
-| A-7 | Not Run in this phase | Existing tests were run before this feature package creation. | Run targeted tests when production code changes. |
+| A-7 | Passed | Focused tests and full `unittest` discovery passed after implementation. | Existing proposal commands remain covered by `tests.test_proposals`. |
 
 ## Outliers
 
@@ -37,11 +37,9 @@ Planning PoC confirms that GovKB already has the source surfaces needed for this
 
 | Gap | Impact |
 |---|---|
-| Phase 0 CLI shape is not finalized. | Blocks implementation of proposal report command flags/action. |
-| No test fixtures exist yet for grouping, health, maturity, or doctor payload. | Must be created during implementation. |
+| Health, maturity, and doctor payload fixtures do not exist yet. | Deferred to later phases. |
 | VS Code UI scope is not finalized. | Keep UI out of Phase 0. |
 
 ## Recommendation
 
 Start with Phase 0: proposal grouping/reporting and advisory quality warnings. It has the clearest inputs, minimal risk, and immediate value for the existing Clearing consumer queue.
-

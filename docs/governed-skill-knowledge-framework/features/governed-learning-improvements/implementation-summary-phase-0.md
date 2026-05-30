@@ -1,6 +1,6 @@
 # Governed Learning Improvements - Phase 0 Implementation Summary
 
-Date: 2026-05-29
+Date: 2026-05-30
 
 ## Scope Implemented
 
@@ -36,16 +36,19 @@ The command was run against Clearing as a consumer project:
 
 ```bash
 PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals report /home/ev/code/Clearing --json
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals review /home/ev/code/Clearing --action inspect-safety
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals review /home/ev/code/Clearing --action merge-first
+PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals review /home/ev/code/Clearing --action manual-review
 ```
 
 Observed result:
 
-- Proposals: 10
-- Groups: 9
-- Warnings: 9
-- Actions: 2 `inspect-safety`, 6 `manual-review`, 1 `merge-first`
+- Proposals: 30
+- Groups: 28
+- Warnings: 16
+- Actions: 4 `inspect-safety`, 2 `merge-first`, 22 `manual-review`, 0 `reject-duplicate`
 
-The report grouped the two DVCA payout E2E runbook proposals together and left unrelated golden-lineage, mirror-stale-ref, split-source, and project-steward proposals separate.
+The report grouped related realtime cashflow production verification proposals and the two DVCA payout E2E runbook proposals while leaving unrelated proposal groups separate.
 
 ## Verification
 
@@ -59,10 +62,10 @@ PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals review /
 
 Result:
 
-- Focused tests passed.
-- Full suite passed: 192 tests, 33 skipped scaffold tests.
+- Focused tests passed: 12 tests.
+- Full suite passed: 194 tests, 33 skipped scaffold tests.
 - Diff whitespace check passed.
-- CLI help resolved for the new command.
+- CLI help and Clearing consumer review commands resolved.
 
 ## Deferred
 
