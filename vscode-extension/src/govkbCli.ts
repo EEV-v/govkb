@@ -36,6 +36,14 @@ export function statusJsonCommand(settings: GovkbSettings, projectRoot: string):
   return buildGovkbCommand(settings, [...withCodexHome(["status", projectRoot], settings.codexHome), "--json"]);
 }
 
+export function doctorJsonCommand(settings: GovkbSettings, projectRoot: string): CliCommand {
+  return buildGovkbCommand(settings, [...withCodexHome(["doctor", projectRoot], settings.codexHome), "--json"]);
+}
+
+export function proposalReviewJsonCommand(settings: GovkbSettings, projectRoot: string, action = "all"): CliCommand {
+  return buildGovkbCommand(settings, ["proposals", "review", projectRoot, "--action", action, "--json"]);
+}
+
 export function applyCodexCommand(settings: GovkbSettings, projectRoot: string): CliCommand {
   return buildGovkbCommand(settings, withCodexHome(["apply", "codex", "--project-root", projectRoot], settings.codexHome));
 }

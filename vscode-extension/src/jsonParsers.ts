@@ -1,9 +1,11 @@
 import {
   CandidatesPayload,
   ConversionPayload,
+  DoctorPayload,
   LearningInventoryPayload,
   PromotionCleanupPayload,
   PromotionsPayload,
+  ProposalReviewPayload,
   ReportSummaryPayload,
   StatusPayload
 } from "./types";
@@ -40,6 +42,33 @@ function assertBoolean(value: unknown, label: string): boolean {
   return value;
 }
 
+function assertStringOrNull(value: unknown, label: string): string | null {
+  if (value !== null && typeof value !== "string") {
+    throw new Error(`invalid ${label}: expected string or null`);
+  }
+  return value;
+}
+
+function assertNumberRecord(value: unknown, label: string): Record<string, number> {
+  if (!isObject(value)) {
+    throw new Error(`invalid ${label}: expected object`);
+  }
+  for (const [key, item] of Object.entries(value)) {
+    assertNumber(item, `${label}.${key}`);
+  }
+  return value as Record<string, number>;
+}
+
+function assertStringRecord(value: unknown, label: string): Record<string, string> {
+  if (!isObject(value)) {
+    throw new Error(`invalid ${label}: expected object`);
+  }
+  for (const [key, item] of Object.entries(value)) {
+    assertString(item, `${label}.${key}`);
+  }
+  return value as Record<string, string>;
+}
+
 export function parseStatusPayload(text: string): StatusPayload {
   const payload = JSON.parse(text) as unknown;
   if (!isObject(payload)) {
@@ -59,6 +88,122 @@ export function parseStatusPayload(text: string): StatusPayload {
   assertArray(payload.capabilities, "capabilities");
   assertArray(payload.adapters, "adapters");
   return payload as unknown as StatusPayload;
+}
+
+export function parseDoctorPayload(text: string): DoctorPayload {
+  const payload = JSON.parse(text) as unknown;
+  if (!isObject(payload)) {
+    throw new Error("invalid doctor payload: expected object");
+  }
+  if (payload.schemaVersion !== 1) {
+    throw new Error("invalid doctor payload: unsupported schemaVersion");
+  }
+  assertString(payload.projectRoot, "projectRoot");
+  assertString(payload.codexHome, "codexHome");
+  assertString(payload.state, "state");
+  if (!isObject(payload.project) || !isObject(payload.validation) || !isObject(payload.installState) || !isObject(payload.skillUpdates)) {
+    throw new Error("invalid doctor payload: missing status sections");
+  }
+  if (!isObject(payload.proposalQueue) || !isObject(payload.proposalQueue.summary)) {
+    throw new Error("invalid doctor payload: missing proposalQueue");
+  }
+  validateProposalReviewSummary(payload.proposalQueue.summary, "proposalQueue.summary");
+  const reviewGroups = assertArray(payload.proposalQueue.reviewGroups, "proposalQueue.reviewGroups");
+  for (const [index, group] of reviewGroups.entries()) {
+    if (!isObject(group)) {
+      throw new Error(`invalid proposalQueue.reviewGroups[${index}]: expected object`);
+    }
+    assertString(group.id, `proposalQueue.reviewGroups[${index}].id`);
+    assertString(group.recommendedAction, `proposalQueue.reviewGroups[${index}].recommendedAction`);
+    assertArray(group.proposalIds, `proposalQueue.reviewGroups[${index}].proposalIds`);
+    assertArray(group.warningCodes, `proposalQueue.reviewGroups[${index}].warningCodes`);
+  }
+  if (!isObject(payload.memoryReview) || !isObject(payload.memoryReview.state) || !isObject(payload.memoryReview.latestRun)) {
+    throw new Error("invalid doctor payload: missing memoryReview");
+  }
+  assertString(payload.memoryReview.stateDir, "memoryReview.stateDir");
+  assertString(payload.memoryReview.statePath, "memoryReview.statePath");
+  assertString(payload.memoryReview.reportDir, "memoryReview.reportDir");
+  assertString(payload.memoryReview.state.status, "memoryReview.state.status");
+  assertStringOrNull(payload.memoryReview.state.lastRunAt, "memoryReview.state.lastRunAt");
+  assertStringOrNull(payload.memoryReview.state.lastSuccessfulUpdatedAt, "memoryReview.state.lastSuccessfulUpdatedAt");
+  assertNumber(payload.memoryReview.state.processedSessionCount, "memoryReview.state.processedSessionCount");
+  assertStringOrNull(payload.memoryReview.state.error, "memoryReview.state.error");
+  assertString(payload.memoryReview.latestRun.status, "memoryReview.latestRun.status");
+  assertStringOrNull(payload.memoryReview.latestRun.path, "memoryReview.latestRun.path");
+  assertStringOrNull(payload.memoryReview.latestRun.runId, "memoryReview.latestRun.runId");
+  assertNumberRecord(payload.memoryReview.latestRun.counts, "memoryReview.latestRun.counts");
+  assertStringRecord(payload.memoryReview.latestRun.metadata, "memoryReview.latestRun.metadata");
+  if (!isObject(payload.cron)) {
+    throw new Error("invalid doctor payload: missing cron");
+  }
+  assertString(payload.cron.status, "cron.status");
+  assertString(payload.cron.scriptPath, "cron.scriptPath");
+  assertString(payload.cron.logPath, "cron.logPath");
+  assertArray(payload.cron.matchingLines, "cron.matchingLines");
+  assertStringOrNull(payload.cron.error, "cron.error");
+  const recommendations = assertArray(payload.recommendations, "recommendations");
+  for (const [index, recommendation] of recommendations.entries()) {
+    if (!isObject(recommendation)) {
+      throw new Error(`invalid recommendations[${index}]: expected object`);
+    }
+    assertString(recommendation.kind, `recommendations[${index}].kind`);
+    assertString(recommendation.message, `recommendations[${index}].message`);
+    if (recommendation.command !== undefined) {
+      assertString(recommendation.command, `recommendations[${index}].command`);
+    }
+  }
+  return payload as unknown as DoctorPayload;
+}
+
+function validateProposalReviewSummary(value: Record<string, unknown>, label: string): void {
+  assertNumber(value.proposalCount, `${label}.proposalCount`);
+  assertNumber(value.groupCount, `${label}.groupCount`);
+  assertNumber(value.warningCount, `${label}.warningCount`);
+  if (value.reviewGroupCount !== undefined) {
+    assertNumber(value.reviewGroupCount, `${label}.reviewGroupCount`);
+  }
+  if (value.actionFilter !== undefined) {
+    assertString(value.actionFilter, `${label}.actionFilter`);
+  }
+  if (!isObject(value.actionCounts)) {
+    throw new Error(`invalid ${label}.actionCounts: expected object`);
+  }
+  for (const [key, count] of Object.entries(value.actionCounts)) {
+    assertNumber(count, `${label}.actionCounts.${key}`);
+  }
+}
+
+export function parseProposalReviewPayload(text: string): ProposalReviewPayload {
+  const payload = JSON.parse(text) as unknown;
+  if (!isObject(payload)) {
+    throw new Error("invalid proposal review payload: expected object");
+  }
+  if (payload.schemaVersion !== 1) {
+    throw new Error("invalid proposal review payload: unsupported schemaVersion");
+  }
+  assertString(payload.projectRoot, "projectRoot");
+  if (!isObject(payload.summary)) {
+    throw new Error("invalid proposal review payload: missing summary");
+  }
+  validateProposalReviewSummary(payload.summary, "summary");
+  const groups = assertArray(payload.groups, "groups");
+  for (const [index, group] of groups.entries()) {
+    if (!isObject(group)) {
+      throw new Error(`invalid groups[${index}]: expected object`);
+    }
+    assertString(group.id, `groups[${index}].id`);
+    assertNumber(group.priority, `groups[${index}].priority`);
+    assertString(group.recommendedAction, `groups[${index}].recommendedAction`);
+    assertArray(group.proposalIds, `groups[${index}].proposalIds`);
+    assertArray(group.targetCapabilities, `groups[${index}].targetCapabilities`);
+    assertArray(group.warningCodes, `groups[${index}].warningCodes`);
+    assertArray(group.outputPaths, `groups[${index}].outputPaths`);
+    assertString(group.reason, `groups[${index}].reason`);
+    assertArray(group.nextSteps, `groups[${index}].nextSteps`);
+    assertArray(group.commands, `groups[${index}].commands`);
+  }
+  return payload as unknown as ProposalReviewPayload;
 }
 
 export function parseCandidatesPayload(text: string): CandidatesPayload {

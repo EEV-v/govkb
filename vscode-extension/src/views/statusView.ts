@@ -1,4 +1,4 @@
-import { SkillUpdateState, StatusPayload, TreeRow } from "../types";
+import { DoctorPayload, SkillUpdateState, StatusPayload, TreeRow } from "../types";
 
 const skillUpdateLabels: Record<SkillUpdateState, string> = {
   current: "current",
@@ -55,7 +55,66 @@ function skillUpdateCommand(status: StatusPayload): TreeRow["command"] {
   }
 }
 
-export function statusRows(status?: StatusPayload): TreeRow[] {
+function doctorRows(doctor?: DoctorPayload): TreeRow[] {
+  if (!doctor) {
+    return [];
+  }
+  const proposals = doctor.proposalQueue.summary;
+  const rows: TreeRow[] = [
+    {
+      label: "Doctor",
+      description: doctor.state,
+      tooltip: [
+        `Cron: ${doctor.cron.status}`,
+        `Memory review state: ${doctor.memoryReview.state.status}`,
+        `Latest memory report: ${doctor.memoryReview.latestRun.status}`,
+        `Processed sessions: ${doctor.memoryReview.state.processedSessionCount}`,
+        doctor.memoryReview.latestRun.path ? `Latest report: ${doctor.memoryReview.latestRun.path}` : undefined
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      icon: doctor.state === "ok" ? "pass" : doctor.state === "error" ? "error" : "warning",
+      command: { command: "govkb.refreshHealth", title: "GovKB: Refresh Health" }
+    },
+    {
+      label: "Proposal queue",
+      description: `${proposals.proposalCount} proposal(s), ${proposals.warningCount} warning(s)`,
+      tooltip: Object.entries(proposals.actionCounts)
+        .map(([action, count]) => `${action}: ${count}`)
+        .join("\n"),
+      icon: proposals.proposalCount > 0 ? "list-tree" : "pass",
+      command: { command: "govkb.reviewProposals", title: "GovKB: Review Proposals" }
+    },
+    {
+      label: "Memory review cron",
+      description: doctor.cron.status,
+      tooltip: [
+        doctor.cron.scriptPath,
+        doctor.cron.logPath,
+        doctor.cron.error,
+        ...doctor.cron.matchingLines
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      icon: doctor.cron.status === "installed" ? "watch" : "warning",
+      command: { command: "govkb.refreshHealth", title: "GovKB: Refresh Health" }
+    }
+  ];
+  if (doctor.recommendations.length > 0) {
+    rows.push({
+      label: "Doctor recommendations",
+      description: `${doctor.recommendations.length}`,
+      tooltip: doctor.recommendations
+        .map((item) => [item.message, item.command].filter(Boolean).join("\n"))
+        .join("\n\n"),
+      icon: "lightbulb",
+      command: { command: "govkb.refreshHealth", title: "GovKB: Refresh Health" }
+    });
+  }
+  return rows;
+}
+
+export function statusRows(status?: StatusPayload, doctor?: DoctorPayload): TreeRow[] {
   if (!status) {
     return [
       {
@@ -151,6 +210,7 @@ export function statusRows(status?: StatusPayload): TreeRow[] {
     });
   }
   return [
-    ...rows
+    ...rows,
+    ...doctorRows(doctor)
   ];
 }

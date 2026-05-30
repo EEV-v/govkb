@@ -7,6 +7,8 @@ Local VSIX proof for GovKB workflows.
 - One-click setup for one trusted workspace.
 - One-click apply through `govkb apply codex`.
 - Status, capability, candidate, promotion, and report views backed by GovKB CLI data.
+- Read-only Doctor health refresh for cron, latest memory-review report, installed revision, and staged proposal queue state.
+- Staged proposal queue review backed by `govkb proposals review --json`, with exact inspect commands printed to the output channel.
 - Single Skill updates indicator backed by CLI status, comparing repo package revision, applied Codex state, and pending learned local memory.
 - Memory review dry-run and apply runs with low-cost defaults and streamed output.
 - Extension-triggered memory review uses a bounded default classifier timeout.

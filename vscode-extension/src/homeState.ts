@@ -1,8 +1,10 @@
 import { actionDefinition, GovkbActionId } from "./actionRegistry";
 import {
   CandidateSummary,
+  DoctorPayload,
   LearningInventoryPayload,
   LearningRunState,
+  ProposalReviewPayload,
   PromotionSummary,
   ReportSummary,
   StatusPayload
@@ -42,6 +44,8 @@ export interface HomeModelInput {
   reports?: ReportSummary[];
   candidates?: CandidateSummary[];
   promotions?: PromotionSummary[];
+  doctor?: DoctorPayload;
+  proposalReview?: ProposalReviewPayload;
 }
 
 export interface HomeModel {
@@ -73,9 +77,39 @@ function latestActionablePromotion(promotions?: PromotionSummary[]): PromotionSu
   return promotions && promotions.length > 0 ? promotionGroups(promotions)[0]?.promotion : undefined;
 }
 
+function proposalSummary(input: HomeModelInput) {
+  return input.proposalReview?.summary ?? input.doctor?.proposalQueue.summary;
+}
+
+function proposalQueueDescription(input: HomeModelInput): string {
+  const summary = proposalSummary(input);
+  if (!summary || summary.proposalCount === 0) {
+    return "No staged proposals.";
+  }
+  const actions = Object.entries(summary.actionCounts)
+    .filter(([, count]) => count > 0)
+    .map(([name, count]) => `${name}: ${count}`)
+    .join(", ");
+  return `${summary.proposalCount} proposal(s), ${summary.warningCount} warning(s)${actions ? `; ${actions}` : ""}.`;
+}
+
+function doctorTone(state?: string): "normal" | "success" | "warning" | "error" {
+  if (state === "ok") {
+    return "success";
+  }
+  if (state === "error") {
+    return "error";
+  }
+  if (state === "attention" || state === "warning") {
+    return "warning";
+  }
+  return "normal";
+}
+
 function primaryAction(input: HomeModelInput): HomeAction {
   const { status, inventory, promotions, run } = input;
   const promotion = latestActionablePromotion(promotions);
+  const proposals = proposalSummary(input);
 
   if (!status) {
     return action("setup", {
@@ -156,6 +190,16 @@ function primaryAction(input: HomeModelInput): HomeAction {
       }
     );
   }
+  if (proposals && proposals.proposalCount > 0) {
+    return action(
+      "reviewProposals", {
+        label: "Review staged proposals",
+        description: proposalQueueDescription(input),
+        reason: "GovKB found staged governed-learning proposals that should be triaged before more learning runs are applied.",
+        consequence: "Loads the read-only proposal review queue and prints exact inspect commands; it does not apply proposal changes."
+      }
+    );
+  }
   if (inventory && inventory.sessions.selectedForReview > 0) {
     return action(
       "reviewLearningDryRun", {
@@ -177,9 +221,10 @@ function primaryAction(input: HomeModelInput): HomeAction {
 }
 
 function projectBadges(input: HomeModelInput): HomeBadge[] {
-  const { status, inventory, candidates, promotions } = input;
+  const { status, inventory, candidates, promotions, doctor } = input;
   const promotion = latestActionablePromotion(promotions);
-  return [
+  const proposals = proposalSummary(input);
+  const badges: HomeBadge[] = [
     {
       label: "Project",
       value: status?.project.id ?? "not loaded",
@@ -211,13 +256,74 @@ function projectBadges(input: HomeModelInput): HomeBadge[] {
       tone: promotion && promotion.state !== "applied" ? "warning" : "normal"
     }
   ];
+  if (doctor) {
+    badges.push(
+      {
+        label: "Doctor",
+        value: doctor.state,
+        tone: doctorTone(doctor.state)
+      },
+      {
+        label: "Cron",
+        value: doctor.cron.status,
+        tone: doctor.cron.status === "installed" ? "success" : "warning"
+      },
+      {
+        label: "Memory report",
+        value: doctor.memoryReview.latestRun.status,
+        tone: doctor.memoryReview.latestRun.status === "completed" ? "success" : "warning"
+      }
+    );
+  }
+  if (proposals) {
+    badges.push({
+      label: "Proposals",
+      value: `${proposals.proposalCount}`,
+      tone: proposals.warningCount > 0 || proposals.proposalCount > 0 ? "warning" : "success"
+    });
+  }
+  return badges;
 }
 
 function workflowSections(input: HomeModelInput): HomeSection[] {
-  const { status, inventory, reports, candidates, promotions, run } = input;
+  const { status, inventory, reports, candidates, promotions, run, doctor, proposalReview } = input;
   const promotion = latestActionablePromotion(promotions);
   const latestReport = reports?.[0];
+  const proposals = proposalSummary(input);
   const sections: HomeSection[] = [];
+
+  if (status) {
+    const recommendationCount = doctor?.recommendations.length ?? 0;
+    sections.push({
+      id: "health",
+      title: "Project Health",
+      description: doctor
+        ? `${doctor.state}; cron ${doctor.cron.status}; memory ${doctor.memoryReview.latestRun.status}; ${recommendationCount} recommendation(s).`
+        : "Doctor has not been loaded.",
+      actions: [
+        action("refreshHealth"),
+        action("reviewProposals", {
+          description: proposalQueueDescription(input)
+        }),
+        action("openOutput")
+      ]
+    });
+  }
+
+  if (proposals && proposals.proposalCount > 0) {
+    sections.push({
+      id: "proposals",
+      title: "Proposal Queue",
+      description: proposalReview
+        ? `${proposalReview.summary.reviewGroupCount ?? proposalReview.groups.length} review group(s) loaded; ${proposalQueueDescription(input)}`
+        : proposalQueueDescription(input),
+      actions: [
+        action("reviewProposals"),
+        action("refreshHealth"),
+        action("openOutput")
+      ]
+    });
+  }
 
   sections.push({
     id: "learning",

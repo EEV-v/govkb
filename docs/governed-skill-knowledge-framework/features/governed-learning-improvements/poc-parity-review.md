@@ -4,13 +4,13 @@ Last updated: 2026-05-30
 
 ## Verdict
 
-Ready for Merge: Yes, Phases 0-1.
+Ready for Merge: Yes, Phases 0-1 and 4.
 
-Phase 0 covers proposal grouping, advisory quality warnings, and actionable proposal review output. Phase 1 adds read-only `govkb doctor` health output for memory review, cron, install state, repo state, and proposal queue summary. Self-noise filtering, maturity scoring, VS Code freshness, and doctor UI integration remain deferred follow-ups.
+Phase 0 covers proposal grouping, advisory quality warnings, and actionable proposal review output. Phase 1 adds read-only `govkb doctor` health output for memory review, cron, install state, repo state, and proposal queue summary. Phase 4 wires those JSON contracts into the VS Code Home and Status surfaces as read-only health and proposal review actions. Self-noise filtering and maturity scoring remain deferred follow-ups.
 
 ## Summary
 
-The implemented Phase 0-1 behavior matches the accepted PoC and plan for proposal queue review and health reporting. GovKB now exposes read-only `govkb proposals report`, `govkb proposals review`, and `govkb doctor` commands, with JSON contracts and text output for maintainers. Tests use synthetic temp project fixtures and do not depend on Clearing, user-home state, raw session transcripts, or credentials.
+The implemented Phase 0-1 and 4 behavior matches the accepted PoC and plan for proposal queue review, health reporting, and read-only VS Code visibility. GovKB now exposes read-only `govkb proposals report`, `govkb proposals review`, and `govkb doctor` commands, with JSON contracts, text output for maintainers, and VS Code surfaces that consume the same contracts. Tests use synthetic temp project fixtures and do not depend on Clearing, user-home state, raw session transcripts, or credentials.
 
 ## Requirement Parity
 
@@ -23,7 +23,7 @@ The implemented Phase 0-1 behavior matches the accepted PoC and plan for proposa
 | REQ-GLI-05 | A-4 | Not implemented in Phase 0 | DEFERRED | Planned for self-noise filtering phase. |
 | REQ-GLI-06 | A-4 | Not implemented in Phase 0 | DEFERRED | Planned with self-noise filtering user-row override. |
 | REQ-GLI-07 | A-5 | Not implemented in Phase 0 | DEFERRED | Planned for capability maturity phase. |
-| REQ-GLI-08 | A-6 | Not implemented in Phase 0 | DEFERRED | Planned after CLI doctor JSON exists. |
+| REQ-GLI-08 | A-6 | `vscode-extension/src/homeState.ts`; `vscode-extension/src/views/statusView.ts`; `npm test` | PASS | Home and Status show Doctor, cron, memory-review, and proposal queue freshness. |
 | REQ-GLI-09 | A-7 | `tests.test_proposals`; full suite | PASS | Existing list/show/apply behavior remains covered. |
 
 ## Scenario Parity
@@ -36,7 +36,7 @@ The implemented Phase 0-1 behavior matches the accepted PoC and plan for proposa
 | UC-4 | Deferred | DEFERRED | Later memory-review filtering phase. |
 | UC-5 | Deferred | DEFERRED | Later memory-review filtering phase. |
 | UC-6 | Deferred | DEFERRED | Later maturity phase. |
-| UC-7 | Deferred | DEFERRED | Later doctor and VS Code phase. |
+| UC-7 | `vscode-extension/src/test/suite/homeState.test.ts`; `vscode-extension/src/test/suite/views.test.ts` | PASS | VS Code Home and Status identify Doctor/proposal state and route to read-only refresh/review commands. |
 
 ## Command Evidence
 
@@ -49,28 +49,29 @@ The implemented Phase 0-1 behavior matches the accepted PoC and plan for proposa
 | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli proposals review /home/ev/code/Clearing --action inspect-safety` | `/home/ev/code/govkb` | PASS | Clearing consumer queue reported 4 safety-inspection groups. |
 | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m unittest tests.test_doctor tests.test_status_json tests.test_proposals -v` | `/home/ev/code/govkb` | PASS | 14 tests passed. |
 | `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src python3 -m govkb.cli doctor /home/ev/code/Clearing` | `/home/ev/code/govkb` | PASS | Reported cron installed, latest memory-review completed, 30 proposals, 28 groups, and 16 warnings. |
+| `npm run compile` | `/home/ev/code/govkb/vscode-extension` | PASS | TypeScript extension compiled. |
+| `npm test` | `/home/ev/code/govkb/vscode-extension` | PASS | 120 extension tests passed. |
 
 ## Deviations
 
 | Deviation | Approved? | Reason | Follow-up |
 |---|---|---|---|
 | Phase 0 added `govkb proposals review` in addition to the planned `report` command. | Yes | The report JSON is useful for integration, but maintainers also need direct next commands. | Use `review --json` as the VS Code proposal queue contract. |
-| Overall feature requirements REQ-GLI-05 through REQ-GLI-08 are not complete. | Yes | The feature is being delivered in bounded phases. | Continue with self-noise, maturity, and VS Code phases. |
+| Overall feature requirements REQ-GLI-05 through REQ-GLI-07 are not complete. | Yes | The feature is being delivered in bounded phases. | Continue with self-noise and maturity phases. |
 | Clearing proposal counts changed between initial and final consumer checks. | Yes | Clearing is a live consumer queue, not an automated fixture. | Keep automated tests on synthetic fixtures. |
+| VS Code proposal actions are read-only. | Yes | Proposal apply should remain explicit CLI/manual review until the review UX is proven. | Consider apply affordances only after queue triage quality is stable. |
 
 ## Risks
 
 - Similarity grouping may need tuning after more proposal queues are reviewed.
 - Script warning heuristics are advisory and may produce false positives.
-- VS Code still shows old UI until it consumes the new proposal review and doctor JSON contracts.
+- Users must install VSIX `0.0.5` or reload the extension host to see the new Home/Status surfaces.
 
 ## Required Fixes Before Merge
 
-None for Phase 0.
+None for Phases 0-1 and 4.
 
 ## Post-merge Follow-ups
 
-- Update VS Code to consume `govkb proposals review --json`.
-- Update VS Code to consume `govkb doctor --json`.
 - Add conservative self-noise filtering for already processed session tails.
 - Add capability maturity scoring after health output stabilizes.

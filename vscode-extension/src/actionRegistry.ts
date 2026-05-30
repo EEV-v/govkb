@@ -14,6 +14,8 @@ export type GovkbActionId =
   | "discoverLearning"
   | "reviewLearningDryRun"
   | "reviewLearningApply"
+  | "refreshHealth"
+  | "reviewProposals"
   | "createReviewWorktree"
   | "openPromotion"
   | "acceptPromotion"
@@ -85,6 +87,24 @@ export const actionDefinitions: Record<GovkbActionId, GovkbActionDefinition> = {
     description: "Apply a bounded learning review through the CLI.",
     icon: "play",
     mutates: "codexHome",
+    cliBacked: true
+  },
+  refreshHealth: {
+    id: "refreshHealth",
+    command: "govkb.refreshHealth",
+    label: "Refresh health",
+    description: "Run GovKB Doctor and reload project health.",
+    icon: "pulse",
+    mutates: "none",
+    cliBacked: true
+  },
+  reviewProposals: {
+    id: "reviewProposals",
+    command: "govkb.reviewProposals",
+    label: "Review proposals",
+    description: "Load the staged proposal review queue.",
+    icon: "list-tree",
+    mutates: "none",
     cliBacked: true
   },
   createReviewWorktree: {

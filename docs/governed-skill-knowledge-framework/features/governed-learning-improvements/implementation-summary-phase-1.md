@@ -62,4 +62,4 @@ Result:
 
 ## Deferred
 
-Phase 1 does not implement self-noise filtering, capability maturity scoring, or VS Code UI changes. VS Code should consume `govkb proposals review --json` and `govkb doctor --json` in the next UI slice.
+Phase 1 does not implement self-noise filtering, capability maturity scoring, or VS Code UI changes. The follow-up Phase 4 now consumes `govkb proposals review --json` and `govkb doctor --json` in VS Code.

@@ -6,7 +6,7 @@ import { learningRows } from "../../views/learningView";
 import { promotionRows } from "../../views/promotionsView";
 import { reportRows } from "../../views/reportsView";
 import { statusRows } from "../../views/statusView";
-import { StatusPayload } from "../../types";
+import { DoctorPayload, StatusPayload } from "../../types";
 
 const status: StatusPayload = {
   schemaVersion: 1,
@@ -43,12 +43,44 @@ const status: StatusPayload = {
   }
 };
 
+const doctor: DoctorPayload = {
+  schemaVersion: 1,
+  projectRoot: "/repo",
+  codexHome: "/tmp/codex-home",
+  state: "attention",
+  project: status.project,
+  validation: status.validation,
+  installState: status.installState,
+  skillUpdates: status.skillUpdates,
+  proposalQueue: {
+    summary: { proposalCount: 3, groupCount: 2, warningCount: 1, reviewGroupCount: 2, actionFilter: "all", actionCounts: { "inspect-safety": 1, "manual-review": 1 } },
+    reviewGroups: [{ id: "group-1", recommendedAction: "inspect-safety", proposalIds: ["p1"], warningCodes: ["weak-verification"] }]
+  },
+  memoryReview: {
+    stateDir: "/tmp/state",
+    statePath: "/tmp/state/state.json",
+    reportDir: "/tmp/state/reports",
+    state: { status: "present", lastRunAt: "2026-05-30T00:00:00Z", lastSuccessfulUpdatedAt: "2026-05-30T00:00:00Z", processedSessionCount: 12, error: null },
+    latestRun: { status: "completed", path: "/tmp/state/reports/report.md", runId: "run", counts: { selectedBeforeLimit: 8 }, metadata: { mode: "dry-run" } }
+  },
+  cron: { status: "installed", scriptPath: "/tmp/codex-home/bin/codex-memory-review", logPath: "/tmp/cron.log", matchingLines: ["0 * * * * codex-memory-review"], error: null },
+  recommendations: [{ kind: "proposals", message: "Inspect safety-sensitive staged proposals.", command: "govkb proposals review /repo --action inspect-safety" }]
+};
+
 test("statusRows summarize project health", () => {
   const rows = statusRows(status);
   assert.equal(rows[0].label, "demo-project");
   assert.equal(rows[0].description, "ok, 1 governed skill(s)");
   assert.equal(rows[0].icon, "project");
   assert.equal(rows.find((row) => row.label === "Learned updates")?.description, "current");
+});
+
+test("statusRows include read-only doctor and proposal queue rows", () => {
+  const rows = statusRows(status, doctor);
+  assert.equal(rows.find((row) => row.label === "Doctor")?.description, "attention");
+  assert.equal(rows.find((row) => row.label === "Proposal queue")?.command?.command, "govkb.reviewProposals");
+  assert.equal(rows.find((row) => row.label === "Memory review cron")?.description, "installed");
+  assert.equal(rows.find((row) => row.label === "Doctor recommendations")?.description, "1");
 });
 
 test("statusRows provide first-open actions", () => {

@@ -6,6 +6,8 @@ test("action registry provides stable command metadata for home workflow actions
   assert.equal(actionDefinition("setup").command, "govkb.oneClickSetup");
   assert.equal(actionDefinition("apply").icon, "cloud-upload");
   assert.equal(actionDefinition("finalizePromotion").command, "govkb.finalizeAcceptedPromotion");
+  assert.equal(actionDefinition("refreshHealth").command, "govkb.refreshHealth");
+  assert.equal(actionDefinition("reviewProposals").mutates, "none");
   assert.equal(actionDefinition("cleanupPromotions").mutates, "promotionWorktreeAndMetadata");
 });
 

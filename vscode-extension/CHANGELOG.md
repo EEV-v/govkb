@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.5
+
+- Added read-only GovKB Doctor health refresh in Home and Status.
+- Added staged proposal queue visibility backed by `govkb proposals review --json`.
+- Surfaced cron, latest memory-review report, and proposal warning counts in the VS Code workflow.
+
 ## 0.0.4
 
 - Ran memory-review Python adapters with the active GovKB interpreter instead of the system `python3` shebang.

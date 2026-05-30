@@ -11,8 +11,8 @@ Last updated: 2026-05-30
 | REQ-GLI-05 | Filter obvious self-generated tails after a processed marker. | AC3 | A-4 | UC-4 | Planned for Phase 2 |
 | REQ-GLI-06 | Preserve user-authored decisions in appended session tails. | AC3 | A-4 | UC-5 | Planned for Phase 2 |
 | REQ-GLI-07 | Score capability maturity from governed artifacts and pending proposals. | AC5 | A-5 | UC-6 | Planned for Phase 3 |
-| REQ-GLI-08 | Provide a VS Code/GovKB freshness check. | AC6 | A-6 | UC-7 | Planned for Phase 4 |
-| REQ-GLI-09 | Keep existing public commands backward compatible. | AC7 | A-7 | UC-1 through UC-7 | Passed in Phase 0 regression |
+| REQ-GLI-08 | Provide a VS Code/GovKB freshness check. | AC6 | A-6 | UC-7 | Implemented in Phase 4 |
+| REQ-GLI-09 | Keep existing public commands backward compatible. | AC7 | A-7 | UC-1 through UC-7 | Passed in Phase 0-4 regression |
 
 ## Out Of Scope
 

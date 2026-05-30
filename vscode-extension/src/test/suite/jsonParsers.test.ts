@@ -5,9 +5,11 @@ import { join } from "node:path";
 import {
   parseCandidatesPayload,
   parseConversionPayload,
+  parseDoctorPayload,
   parseLearningInventoryPayload,
   parsePromotionCleanupPayload,
   parsePromotionsPayload,
+  parseProposalReviewPayload,
   parseReportSummaryPayload,
   parseStatusPayload
 } from "../../jsonParsers";
@@ -22,6 +24,63 @@ test("parseStatusPayload accepts fixture contract", () => {
   assert.equal(payload.project.governedDirty, false);
   assert.equal(payload.installState.codex.status, "missing");
   assert.equal(payload.skillUpdates.state, "not-applied");
+});
+
+test("parseDoctorPayload accepts health and proposal summary contract", () => {
+  const payload = parseDoctorPayload(
+    JSON.stringify({
+      schemaVersion: 1,
+      projectRoot: "/repo",
+      codexHome: "/tmp/codex-home",
+      state: "attention",
+      project: { id: "demo-project", currentRelease: "unreleased", gitRevision: "abc" },
+      validation: { status: "ok", warnings: [], errors: [] },
+      installState: { codex: { status: "present", statePath: "/tmp/state.json", appliedRevision: "abc", appliedRelease: null, appliedAt: null, materializedCapabilities: [] } },
+      skillUpdates: { state: "current", repoRevision: "abc", appliedRevision: "abc", governedDirty: false, pendingLocalMemory: { available: false, safePromotionCount: 0, rejectedCount: 0, pendingCount: 0, items: [] } },
+      proposalQueue: {
+        summary: { proposalCount: 2, groupCount: 1, warningCount: 1, reviewGroupCount: 1, actionFilter: "all", actionCounts: { "inspect-safety": 1 } },
+        reviewGroups: [{ id: "group-1", recommendedAction: "inspect-safety", proposalIds: ["p1", "p2"], warningCodes: ["weak-verification"] }]
+      },
+      memoryReview: {
+        stateDir: "/tmp/state",
+        statePath: "/tmp/state/state.json",
+        reportDir: "/tmp/state/reports",
+        state: { status: "present", lastRunAt: "2026-05-30T00:00:00Z", lastSuccessfulUpdatedAt: "2026-05-30T00:00:00Z", processedSessionCount: 12, error: null },
+        latestRun: { status: "completed", path: "/tmp/state/reports/report.md", runId: "run", counts: { sessionsProcessed: 5 }, metadata: { mode: "dry-run" } }
+      },
+      cron: { status: "installed", scriptPath: "/tmp/codex-home/bin/codex-memory-review", logPath: "/tmp/cron.log", matchingLines: ["* * * * * codex-memory-review"], error: null },
+      recommendations: [{ kind: "proposals", message: "Inspect proposals.", command: "govkb proposals review /repo" }]
+    })
+  );
+  assert.equal(payload.state, "attention");
+  assert.equal(payload.proposalQueue.summary.proposalCount, 2);
+  assert.equal(payload.memoryReview.latestRun.status, "completed");
+});
+
+test("parseProposalReviewPayload accepts review groups", () => {
+  const payload = parseProposalReviewPayload(
+    JSON.stringify({
+      schemaVersion: 1,
+      projectRoot: "/repo",
+      summary: { proposalCount: 1, groupCount: 1, warningCount: 0, reviewGroupCount: 1, actionFilter: "all", actionCounts: { "manual-review": 1 } },
+      groups: [
+        {
+          id: "group-p1",
+          priority: 3,
+          recommendedAction: "manual-review",
+          proposalIds: ["p1"],
+          targetCapabilities: ["project-knowledge-steward"],
+          warningCodes: [],
+          outputPaths: [".governed/capabilities/project-knowledge-steward/references/tool.md"],
+          reason: "proposal is unique in the current queue",
+          nextSteps: ["Review the proposal body."],
+          commands: ["govkb proposals show p1 --project-root /repo"]
+        }
+      ]
+    })
+  );
+  assert.equal(payload.groups[0].recommendedAction, "manual-review");
+  assert.equal(payload.groups[0].commands.length, 1);
 });
 
 test("parseCandidatesPayload accepts fixture contract", () => {

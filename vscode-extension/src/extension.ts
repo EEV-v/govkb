@@ -1,7 +1,14 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { CommandRunState } from "./commandState";
-import { promotionShowCommand, runCliCommand, statusJsonCommand, validateCommand } from "./govkbCli";
+import {
+  doctorJsonCommand,
+  promotionShowCommand,
+  proposalReviewJsonCommand,
+  runCliCommand,
+  statusJsonCommand,
+  validateCommand
+} from "./govkbCli";
 import {
   applyPromotionToProject,
   archivePromotion,
@@ -18,7 +25,7 @@ import {
   runOneClickApply,
   runOneClickSetup
 } from "./flows";
-import { parseStatusPayload } from "./jsonParsers";
+import { parseDoctorPayload, parseProposalReviewPayload, parseStatusPayload } from "./jsonParsers";
 import { discoverLocalSkills, governedSkillNamesForConversion, LocalSkillSummary } from "./localSkills";
 import { resolveProjectRoot } from "./projectSelection";
 import { defaultPromotionReviewReason, normalizePromotionReviewReason } from "./promotionReview";
@@ -35,8 +42,10 @@ import {
   CliCommand,
   CliRunOptions,
   CliRunner,
+  DoctorPayload,
   LearningInventoryPayload,
   LearningRunState,
+  ProposalReviewPayload,
   PromotionSummary,
   ReportSummary,
   StatusPayload
@@ -253,6 +262,8 @@ export function activate(context: vscode.ExtensionContext): void {
   let latestCandidates: CandidateSummary[] = [];
   let latestLearningInventory: LearningInventoryPayload | undefined;
   let latestLearningRun: LearningRunState | undefined;
+  let latestDoctor: DoctorPayload | undefined;
+  let latestProposalReview: ProposalReviewPayload | undefined;
   let monitor: NodeJS.Timeout | undefined;
 
   async function runHomeAction(action: HomeAction): Promise<void> {
@@ -285,14 +296,22 @@ export function activate(context: vscode.ExtensionContext): void {
         run: latestLearningRun,
         reports: latestReports,
         candidates: latestCandidates,
-        promotions: latestPromotions
+        promotions: latestPromotions,
+        doctor: latestDoctor,
+        proposalReview: latestProposalReview
       })
     );
   }
 
   function refreshViews(status?: StatusPayload): void {
     latestStatus = status ?? latestStatus;
-    statusProvider.setRows(statusRows(latestStatus));
+    if (status && latestDoctor?.projectRoot !== status.projectRoot) {
+      latestDoctor = undefined;
+    }
+    if (status && latestProposalReview?.projectRoot !== status.projectRoot) {
+      latestProposalReview = undefined;
+    }
+    statusProvider.setRows(statusRows(latestStatus, latestDoctor));
     capabilitiesProvider.setRows(capabilityRows(latestStatus?.capabilities, latestStatus?.governedRoot));
     refreshLearningView();
   }
@@ -675,6 +694,98 @@ export function activate(context: vscode.ExtensionContext): void {
       });
     }
     return undefined;
+  }
+
+  function formatProposalReviewSummary(payload: ProposalReviewPayload): string {
+    const actions = Object.entries(payload.summary.actionCounts)
+      .filter(([, count]) => count > 0)
+      .map(([action, count]) => `${action}: ${count}`)
+      .join(", ");
+    const lines = [
+      `GovKB proposal queue: ${payload.summary.proposalCount} proposal(s), ${payload.summary.reviewGroupCount ?? payload.groups.length} review group(s), ${payload.summary.warningCount} warning(s).`,
+      actions ? `Actions: ${actions}` : undefined
+    ].filter(Boolean) as string[];
+    for (const group of payload.groups.slice(0, 12)) {
+      lines.push(`- ${group.recommendedAction}: ${group.proposalIds.join(", ")} (${group.reason})`);
+      for (const command of group.commands.slice(0, 3)) {
+        lines.push(`  ${command}`);
+      }
+    }
+    if (payload.groups.length > 12) {
+      lines.push(`- ${payload.groups.length - 12} more group(s) omitted from the compact VS Code summary.`);
+    }
+    return lines.join("\n");
+  }
+
+  async function refreshDoctorForProject(projectRoot: string, warnOnFailure = true): Promise<DoctorPayload | undefined> {
+    const result = await runner.run(doctorJsonCommand(settingsFromVscode(), projectRoot));
+    if (result.stdout.trim()) {
+      try {
+        const doctor = parseDoctorPayload(result.stdout);
+        latestDoctor = doctor;
+        rememberProjectRoot(doctor.projectRoot);
+        statusProvider.setRows(statusRows(latestStatus, latestDoctor));
+        refreshHomeView();
+        if (result.exitCode !== 0 && warnOnFailure) {
+          await showBlocker(output, {
+            title: "GovKB Doctor reports validation errors",
+            action: OPEN_OUTPUT_ACTION,
+            detail: result.stderr || `govkb doctor exited ${result.exitCode}`
+          });
+        }
+        return doctor;
+      } catch (error) {
+        if (warnOnFailure) {
+          await showBlocker(output, {
+            title: "GovKB Doctor output could not be read",
+            action: OPEN_OUTPUT_ACTION,
+            detail: errorDetail(error)
+          });
+        }
+        return undefined;
+      }
+    }
+    if (result.exitCode !== 0 && warnOnFailure) {
+      await showBlocker(output, {
+        title: "GovKB Doctor refresh failed",
+        action: OPEN_OUTPUT_ACTION,
+        detail: result.stderr || result.stdout
+      });
+    }
+    return undefined;
+  }
+
+  async function refreshProposalReviewForProject(
+    projectRoot: string,
+    action = "all",
+    showSummary = false
+  ): Promise<ProposalReviewPayload | undefined> {
+    const result = await runner.run(proposalReviewJsonCommand(settingsFromVscode(), projectRoot, action));
+    if (result.exitCode !== 0) {
+      await showBlocker(output, {
+        title: "GovKB proposal review refresh failed",
+        action: OPEN_OUTPUT_ACTION,
+        detail: result.stderr || result.stdout
+      });
+      return undefined;
+    }
+    try {
+      const review = parseProposalReviewPayload(result.stdout);
+      latestProposalReview = review;
+      rememberProjectRoot(review.projectRoot);
+      refreshHomeView();
+      if (showSummary) {
+        output.appendLine(formatProposalReviewSummary(review));
+      }
+      return review;
+    } catch (error) {
+      await showBlocker(output, {
+        title: "GovKB proposal review output could not be read",
+        action: OPEN_OUTPUT_ACTION,
+        detail: errorDetail(error)
+      });
+      return undefined;
+    }
   }
 
   async function refreshCandidatesForProject(projectRoot: string): Promise<void> {
@@ -1321,6 +1432,8 @@ export function activate(context: vscode.ExtensionContext): void {
         });
         if (result.statusJson) {
           refreshViews(result.statusJson);
+          progress.report({ message: "Running Doctor..." });
+          await refreshDoctorForProject(projectRoot, false);
         }
         if (!result.ok && result.blocker) {
           await showBlocker(output, result.blocker);
@@ -1341,6 +1454,8 @@ export function activate(context: vscode.ExtensionContext): void {
         const result = await runOneClickApply(settingsFromVscode(), projectRoot, runner);
         if (result.statusJson) {
           refreshViews(result.statusJson);
+          progress.report({ message: "Running Doctor..." });
+          await refreshDoctorForProject(projectRoot, false);
         }
         if (!result.ok && result.blocker) {
           await showBlocker(output, result.blocker);
@@ -1360,6 +1475,8 @@ export function activate(context: vscode.ExtensionContext): void {
         progress.report({ message: "Validating project..." });
         const result = await runner.run(validateCommand(settingsFromVscode(), projectRoot));
         await refreshStatus(projectRoot, false);
+        progress.report({ message: "Running Doctor..." });
+        await refreshDoctorForProject(projectRoot, false);
         if (result.exitCode !== 0) {
           await showBlocker(output, {
             title: "GovKB validation failed",
@@ -1378,6 +1495,37 @@ export function activate(context: vscode.ExtensionContext): void {
         rememberProjectRoot(projectRoot);
         progress.report({ message: "Refreshing status..." });
         await refreshStatus(projectRoot);
+        progress.report({ message: "Running Doctor..." });
+        await refreshDoctorForProject(projectRoot, false);
+      });
+    }),
+    vscode.commands.registerCommand("govkb.refreshHealth", async () => {
+      await runWithProgress(commandState, output, "refreshHealth", "Refresh Health", async (progress) => {
+        const projectRoot = latestStatus?.projectRoot ?? (await selectProjectRoot(output));
+        if (!projectRoot) {
+          return;
+        }
+        rememberProjectRoot(projectRoot);
+        progress.report({ message: "Refreshing status..." });
+        await refreshStatus(projectRoot, false);
+        progress.report({ message: "Running Doctor..." });
+        const doctor = await refreshDoctorForProject(projectRoot);
+        if ((doctor?.proposalQueue.summary.proposalCount ?? 0) > 0) {
+          progress.report({ message: "Loading proposal queue..." });
+          await refreshProposalReviewForProject(projectRoot, "all", false);
+        }
+      });
+    }),
+    vscode.commands.registerCommand("govkb.reviewProposals", async (action?: string) => {
+      await runWithProgress(commandState, output, "reviewProposals", "Review Proposals", async (progress) => {
+        const projectRoot = latestStatus?.projectRoot ?? (await selectProjectRoot(output));
+        if (!projectRoot) {
+          return;
+        }
+        output.show(true);
+        rememberProjectRoot(projectRoot);
+        progress.report({ message: "Loading proposal review queue..." });
+        await refreshProposalReviewForProject(projectRoot, action || "all", true);
       });
     }),
     vscode.commands.registerCommand("govkb.reviewMemoryDryRun", async () => {
@@ -1469,6 +1617,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await refreshCandidatesForProject(projectRoot);
         await refreshPromotionsForProject(projectRoot);
         await refreshStatus(projectRoot, false);
+        await refreshDoctorForProject(projectRoot, false);
         await refreshLearningForProject(projectRoot, false);
       });
     }),
@@ -1501,6 +1650,7 @@ export function activate(context: vscode.ExtensionContext): void {
         await refreshCandidatesForProject(projectRoot);
         await refreshPromotionsForProject(projectRoot);
         await refreshStatus(projectRoot, false);
+        await refreshDoctorForProject(projectRoot, false);
         await refreshLearningForProject(projectRoot, false);
       });
     }),
@@ -1533,6 +1683,10 @@ export function activate(context: vscode.ExtensionContext): void {
     await refreshCandidatesForProject(projectRoot);
     await refreshPromotionsForProject(projectRoot);
     await refreshReportsForProject(projectRoot);
+    const doctor = await refreshDoctorForProject(projectRoot, false);
+    if ((doctor?.proposalQueue.summary.proposalCount ?? 0) > 0) {
+      await refreshProposalReviewForProject(projectRoot, "all", false);
+    }
     await refreshLearningForProject(projectRoot, false);
   }
 

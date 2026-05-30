@@ -22,8 +22,8 @@ Planning PoC confirms that GovKB already has the source surfaces needed for this
 | A-3 | Passed | `govkb doctor` combines status JSON, memory-review state/report files, proposal queue summary, install state, and cron detection. | Implemented in Phase 1 with temp fixtures. |
 | A-4 | Partial | `reviewAfter` and row filtering points exist. | Need conservative self-noise tests. |
 | A-5 | Partial | Capability files and staged proposals expose enough artifact presence. | Need level definitions and tests. |
-| A-6 | Partial | VS Code package metadata and install-state revisions exist. | Need doctor command JSON before UI. |
-| A-7 | Passed | Focused tests and full `unittest` discovery passed after implementation. | Existing proposal commands remain covered by `tests.test_proposals`. |
+| A-6 | Passed | VS Code Home and Status consume `govkb doctor --json` and `govkb proposals review --json`. | Implemented in Phase 4 with extension tests. |
+| A-7 | Passed | Focused tests, extension tests, and full `unittest` discovery passed after implementation. | Existing proposal commands remain covered by `tests.test_proposals`. |
 
 ## Outliers
 
@@ -38,8 +38,8 @@ Planning PoC confirms that GovKB already has the source surfaces needed for this
 | Gap | Impact |
 |---|---|
 | Maturity payload fixtures do not exist yet. | Deferred to later phases. |
-| VS Code UI scope is not finalized. | Keep UI out of Phase 0. |
+| VS Code apply/merge proposal affordances are not implemented. | Keep proposal changes explicit and review-only until queue triage quality is stable. |
 
 ## Recommendation
 
-Start with Phase 0: proposal grouping/reporting and advisory quality warnings. It has the clearest inputs, minimal risk, and immediate value for the existing Clearing consumer queue.
+Continue with Phase 2: conservative self-noise filtering for already processed session tails. Proposal grouping, Doctor health, and read-only VS Code visibility are now implemented.

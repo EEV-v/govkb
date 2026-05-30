@@ -335,6 +335,90 @@ export interface ReportSummary {
   containsRawTranscript: false;
 }
 
+export type DoctorState = "ok" | "attention" | "warning" | "error" | string;
+
+export interface DoctorRecommendation {
+  kind: string;
+  message: string;
+  command?: string;
+}
+
+export interface DoctorPayload {
+  schemaVersion: 1;
+  projectRoot: string;
+  codexHome: string;
+  state: DoctorState;
+  project: StatusPayload["project"];
+  validation: StatusPayload["validation"];
+  installState: StatusPayload["installState"];
+  skillUpdates: StatusPayload["skillUpdates"];
+  proposalQueue: {
+    summary: ProposalReviewSummary;
+    reviewGroups: Array<{
+      id: string;
+      recommendedAction: string;
+      proposalIds: string[];
+      warningCodes: string[];
+    }>;
+  };
+  memoryReview: {
+    stateDir: string;
+    statePath: string;
+    reportDir: string;
+    state: {
+      status: string;
+      lastRunAt: string | null;
+      lastSuccessfulUpdatedAt: string | null;
+      processedSessionCount: number;
+      error: string | null;
+    };
+    latestRun: {
+      status: string;
+      path: string | null;
+      runId: string | null;
+      counts: Record<string, number>;
+      metadata: Record<string, string>;
+    };
+  };
+  cron: {
+    status: string;
+    scriptPath: string;
+    logPath: string;
+    matchingLines: string[];
+    error: string | null;
+  };
+  recommendations: DoctorRecommendation[];
+}
+
+export interface ProposalReviewSummary {
+  proposalCount: number;
+  groupCount: number;
+  warningCount: number;
+  reviewGroupCount?: number;
+  actionFilter?: string;
+  actionCounts: Record<string, number>;
+}
+
+export interface ProposalReviewGroup {
+  id: string;
+  priority: number;
+  recommendedAction: string;
+  proposalIds: string[];
+  targetCapabilities: string[];
+  warningCodes: string[];
+  outputPaths: string[];
+  reason: string;
+  nextSteps: string[];
+  commands: string[];
+}
+
+export interface ProposalReviewPayload {
+  schemaVersion: 1;
+  projectRoot: string;
+  summary: ProposalReviewSummary;
+  groups: ProposalReviewGroup[];
+}
+
 export interface PromotionsPayload {
   schemaVersion: 1;
   projectRoot: string;

@@ -365,10 +365,12 @@ const iconPaths: Record<string, string> = {
   output: '<path d="M4 5h16v14H4z"/><path d="M7 9l3 3-3 3"/><path d="M12 16h5"/>',
   pass: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16.5 9"/>',
   play: '<path d="M8 5v14l11-7z"/>',
+  pulse: '<path d="M3 12h4l2-6 4 12 2-6h6"/>',
   "repo-commit": '<circle cx="12" cy="12" r="3"/><path d="M3 12h6"/><path d="M15 12h6"/>',
   refresh: '<path d="M20 12a8 8 0 0 1-13.7 5.7"/><path d="M4 12A8 8 0 0 1 17.7 6.3"/><path d="M17 3v4h-4"/><path d="M7 21v-4h4"/>',
   rocket: '<path d="M5 15c2-6 6-10 14-10 0 8-4 12-10 14l-4-4z"/><path d="M5 15l-2 6 6-2"/><circle cx="15" cy="9" r="1.5"/>',
   search: '<circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/>',
+  trash: '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 14h10l1-14"/><path d="M9 7V4h6v3"/>',
   default: '<circle cx="12" cy="12" r="8"/><path d="M12 8v5"/><path d="M12 16h.01"/>'
 };
 

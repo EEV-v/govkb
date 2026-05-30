@@ -5,10 +5,12 @@ import {
   buildGovkbCommand,
   candidatesJsonCommand,
   convertSkillCommand,
+  doctorJsonCommand,
   initKbCommand,
   installCommand,
   mergeCapabilitiesCommand,
   promoteAutoCommand,
+  proposalReviewJsonCommand,
   promotionApplyCommand,
   promotionArchiveCommand,
   promotionCleanupCommand,
@@ -47,6 +49,16 @@ test("command builders preserve first-slice CLI contracts", () => {
   assert.deepEqual(initKbCommand(settings, "/repo").args, ["init-kb", "/repo", "--all", "--codex-home", "/tmp/codex-home"]);
   assert.deepEqual(validateCommand(settings, "/repo").args, ["validate", "/repo"]);
   assert.deepEqual(statusJsonCommand(settings, "/repo").args, ["status", "/repo", "--codex-home", "/tmp/codex-home", "--json"]);
+  assert.deepEqual(doctorJsonCommand(settings, "/repo").args, ["doctor", "/repo", "--codex-home", "/tmp/codex-home", "--json"]);
+  assert.deepEqual(proposalReviewJsonCommand(settings, "/repo").args, ["proposals", "review", "/repo", "--action", "all", "--json"]);
+  assert.deepEqual(proposalReviewJsonCommand(settings, "/repo", "inspect-safety").args, [
+    "proposals",
+    "review",
+    "/repo",
+    "--action",
+    "inspect-safety",
+    "--json"
+  ]);
   assert.deepEqual(applyCodexCommand(settings, "/repo").args, ["apply", "codex", "--project-root", "/repo", "--codex-home", "/tmp/codex-home"]);
   assert.deepEqual(candidatesJsonCommand(settings, "/repo").args, ["candidates", "list", "/repo", "--json"]);
   assert.deepEqual(convertSkillCommand(settings, "/repo", "release-helper", "release-helper", true).args, [

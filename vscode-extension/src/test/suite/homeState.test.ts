@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { buildHomeModel } from "../../homeState";
-import { LearningInventoryPayload, LearningRunState, PromotionSummary, StatusPayload } from "../../types";
+import { DoctorPayload, LearningInventoryPayload, LearningRunState, PromotionSummary, ProposalReviewPayload, StatusPayload } from "../../types";
 
 const status: StatusPayload = {
   schemaVersion: 1,
@@ -58,6 +58,66 @@ const inventory: LearningInventoryPayload = {
   selectedSessions: [],
   memoryTargets: [],
   recommendedBatch: { lookbackDays: 90, maxSessions: 5, dryRun: true, reason: "Review a bounded batch." }
+};
+
+const doctor: DoctorPayload = {
+  schemaVersion: 1,
+  projectRoot: "/repo",
+  codexHome: "/tmp/codex-home",
+  state: "attention",
+  project: status.project,
+  validation: status.validation,
+  installState: status.installState,
+  skillUpdates: status.skillUpdates,
+  proposalQueue: {
+    summary: {
+      proposalCount: 2,
+      groupCount: 2,
+      warningCount: 1,
+      reviewGroupCount: 2,
+      actionFilter: "all",
+      actionCounts: { "inspect-safety": 1, "manual-review": 1 }
+    },
+    reviewGroups: [
+      { id: "group-1", recommendedAction: "inspect-safety", proposalIds: ["p1"], warningCodes: ["weak-verification"] },
+      { id: "group-2", recommendedAction: "manual-review", proposalIds: ["p2"], warningCodes: [] }
+    ]
+  },
+  memoryReview: {
+    stateDir: "/tmp/codex-home/memories/govkb/projects/demo/codex-memory-review",
+    statePath: "/tmp/codex-home/memories/govkb/projects/demo/codex-memory-review/state.json",
+    reportDir: "/tmp/codex-home/memories/govkb/projects/demo/codex-memory-review/reports",
+    state: { status: "present", lastRunAt: "2026-05-30T00:00:00Z", lastSuccessfulUpdatedAt: "2026-05-30T00:00:00Z", processedSessionCount: 12, error: null },
+    latestRun: { status: "completed", path: "/tmp/report.md", runId: "run", counts: { selectedBeforeLimit: 8 }, metadata: { mode: "dry-run" } }
+  },
+  cron: {
+    status: "installed",
+    scriptPath: "/tmp/codex-home/bin/codex-memory-review",
+    logPath: "/tmp/cron.log",
+    matchingLines: ["0 * * * * codex-memory-review"],
+    error: null
+  },
+  recommendations: [{ kind: "proposals", message: "Inspect safety-sensitive staged proposals.", command: "govkb proposals review /repo --action inspect-safety" }]
+};
+
+const proposalReview: ProposalReviewPayload = {
+  schemaVersion: 1,
+  projectRoot: "/repo",
+  summary: doctor.proposalQueue.summary,
+  groups: [
+    {
+      id: "group-1",
+      priority: 0,
+      recommendedAction: "inspect-safety",
+      proposalIds: ["p1"],
+      targetCapabilities: ["project-knowledge-steward"],
+      warningCodes: ["weak-verification"],
+      outputPaths: [".governed/capabilities/project-knowledge-steward/references/tool.md"],
+      reason: "one or more script/wrapper quality warnings require maintainer review",
+      nextSteps: ["Inspect every proposal in this group before applying anything."],
+      commands: ["govkb proposals show p1 --project-root /repo"]
+    }
+  ]
 };
 
 function promotion(state: string): PromotionSummary {
@@ -193,4 +253,14 @@ test("buildHomeModel guides apply after a productive dry run", () => {
   const model = buildHomeModel({ status, inventory, run });
   assert.equal(model.primaryAction.id, "reviewLearningApply");
   assert.equal(model.primaryAction.command, "govkb.reviewLearningApply");
+});
+
+test("buildHomeModel surfaces doctor and proposal queue before another discovery run", () => {
+  const model = buildHomeModel({ status, inventory, doctor, proposalReview });
+  assert.equal(model.primaryAction.id, "reviewProposals");
+  assert.equal(model.primaryAction.command, "govkb.reviewProposals");
+  assert.equal(model.badges.find((badge) => badge.label === "Doctor")?.value, "attention");
+  assert.equal(model.badges.find((badge) => badge.label === "Cron")?.value, "installed");
+  assert.equal(model.sections.find((section) => section.id === "health")?.title, "Project Health");
+  assert.equal(model.sections.find((section) => section.id === "proposals")?.title, "Proposal Queue");
 });
