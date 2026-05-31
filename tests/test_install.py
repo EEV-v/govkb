@@ -121,6 +121,113 @@ class InstallCommandTests(unittest.TestCase):
             self.assertNotIn(str(resolved_old_home / "bin" / "codex-memory-review"), captured_crontab["input"])
             self.assertIn("Cron: updated project-scoped memory-review job", output.getvalue())
 
+    def test_install_cron_preserves_existing_project_job_settings_when_not_overridden(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            old_home = Path(temp_dir) / "old-codex-home"
+            new_home = Path(temp_dir) / "new-codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            resolved_project_root = project_root.resolve()
+            resolved_old_home = old_home.resolve()
+            resolved_new_home = new_home.resolve()
+
+            existing_cron = (
+                _cron_line(
+                    resolved_project_root,
+                    resolved_old_home,
+                    "5 7 * * 1-5",
+                    inherited_env={
+                        "GOVKB_CODEX_REASONING": "xhigh",
+                        "GOVKB_CODEX_MODEL": "gpt-5.4-mini",
+                        "GOVKB_CLASSIFIER_CODEX_HOME": "/home/ev/.codex",
+                    },
+                )
+                + "\n"
+            )
+            captured_crontab: dict[str, str] = {}
+
+            def fake_run(cmd, **kwargs):
+                if cmd == ["crontab", "-l"]:
+                    return type("Completed", (), {"returncode": 0, "stdout": existing_cron, "stderr": ""})()
+                if cmd == ["crontab", "-"]:
+                    captured_crontab["input"] = kwargs["input"]
+                    return type("Completed", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+                if cmd[:3] == ["git", "-C", str(resolved_project_root)] and cmd[3:] == ["rev-parse", "HEAD"]:
+                    return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+                raise AssertionError(f"unexpected command: {cmd}")
+
+            with patch("govkb.commands.install.subprocess.run", side_effect=fake_run):
+                exit_code = run_install(
+                    argparse.Namespace(
+                        project_root=project_root,
+                        project_id="demo-project",
+                        project_name="Demo Project",
+                        codex_home=new_home,
+                        release=None,
+                        revision=None,
+                        preview=False,
+                        cron=True,
+                        schedule=None,
+                    )
+                )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn("5 7 * * 1-5", captured_crontab["input"])
+            self.assertIn(f"CODEX_HOME={resolved_new_home}", captured_crontab["input"])
+            self.assertIn("GOVKB_CODEX_REASONING=xhigh", captured_crontab["input"])
+            self.assertIn("GOVKB_CODEX_MODEL=gpt-5.4-mini", captured_crontab["input"])
+            self.assertIn("GOVKB_CLASSIFIER_CODEX_HOME=/home/ev/.codex", captured_crontab["input"])
+            self.assertIn(str(resolved_new_home / "bin" / "codex-memory-review"), captured_crontab["input"])
+            self.assertNotIn("15 8 * * *", captured_crontab["input"])
+
+    def test_install_cron_preserves_existing_codex_home_when_not_overridden(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            codex_home = Path(temp_dir) / "existing-codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            resolved_project_root = project_root.resolve()
+            resolved_codex_home = codex_home.resolve()
+
+            existing_cron = (
+                _cron_line(
+                    resolved_project_root,
+                    resolved_codex_home,
+                    "5 7 * * 1-5",
+                    inherited_env={"GOVKB_CODEX_REASONING": "xhigh"},
+                )
+                + "\n"
+            )
+
+            def fake_run(cmd, **kwargs):
+                if cmd == ["crontab", "-l"]:
+                    return type("Completed", (), {"returncode": 0, "stdout": existing_cron, "stderr": ""})()
+                if cmd == ["git", "-C", str(resolved_project_root), "rev-parse", "HEAD"]:
+                    return type("Completed", (), {"returncode": 1, "stdout": "", "stderr": ""})()
+                raise AssertionError(f"unexpected command: {cmd}")
+
+            output = io.StringIO()
+            with patch.dict(os.environ, {"HOME": temp_dir}, clear=True):
+                with patch("govkb.commands.install.subprocess.run", side_effect=fake_run):
+                    with redirect_stdout(output):
+                        exit_code = run_install(
+                            argparse.Namespace(
+                                project_root=project_root,
+                                project_id=None,
+                                project_name=None,
+                                codex_home=None,
+                                release=None,
+                                revision=None,
+                                preview=False,
+                                cron=True,
+                                schedule=None,
+                            )
+                        )
+
+            self.assertEqual(exit_code, 0)
+            self.assertIn(f"Codex home: {resolved_codex_home}", output.getvalue())
+            self.assertIn("Cron: project-scoped memory-review job already exists", output.getvalue())
+            self.assertIn("GOVKB_CODEX_REASONING=xhigh", existing_cron)
+
 
 if __name__ == "__main__":
     unittest.main()

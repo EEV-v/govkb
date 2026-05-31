@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 import shlex
@@ -15,6 +16,9 @@ from govkb.core.contracts import load_project_bundle
 from govkb.core.ids import normalize_identifier
 from govkb.core.install_state import default_codex_home
 from govkb.core.templates import copy_project_template
+
+
+DEFAULT_CRON_SCHEDULE = "15 8 * * *"
 
 
 def _ensure_governed(project_root: Path, project_id: str | None, project_name: str | None, preview: bool) -> int:
@@ -39,13 +43,61 @@ def _ensure_governed(project_root: Path, project_id: str | None, project_name: s
     return 0
 
 
-def _cron_line(project_root: Path, codex_home: Path, schedule: str) -> str:
+def _is_env_assignment(token: str) -> bool:
+    key, separator, _ = token.partition("=")
+    if not separator or not key:
+        return False
+    first = key[0]
+    if not (first == "_" or "A" <= first <= "Z" or "a" <= first <= "z"):
+        return False
+    return all(
+        char == "_" or "A" <= char <= "Z" or "a" <= char <= "z" or "0" <= char <= "9"
+        for char in key
+    )
+
+
+def _cron_settings_from_line(line: str) -> tuple[str | None, dict[str, str]]:
+    try:
+        parts = shlex.split(line)
+    except ValueError:
+        return None, {}
+    if len(parts) < 6:
+        return None, {}
+
+    env: dict[str, str] = {}
+    for token in parts[5:]:
+        if not _is_env_assignment(token):
+            break
+        key, value = token.split("=", 1)
+        env[key] = value
+    return " ".join(parts[:5]), env
+
+
+def _managed_cron_lines(project_root: Path, current: str) -> list[str]:
+    managed_marker = f"--project-root {project_root}"
+    return [entry for entry in current.splitlines() if entry.strip() and managed_marker in entry]
+
+
+def _read_project_cron_settings(project_root: Path) -> tuple[str | None, dict[str, str]]:
+    existing = subprocess.run(["crontab", "-l"], text=True, capture_output=True, check=False)
+    current = existing.stdout if existing.returncode == 0 else ""
+    managed_lines = _managed_cron_lines(project_root, current)
+    if not managed_lines:
+        return None, {}
+    return _cron_settings_from_line(managed_lines[-1])
+
+
+def _cron_line(project_root: Path, codex_home: Path, schedule: str, inherited_env: dict[str, str] | None = None) -> str:
     script = codex_home / "bin" / "codex-memory-review"
     project_id = _project_id(project_root)
     log_path = codex_home / "memories" / "govkb" / "projects" / project_id / "codex-memory-review" / "cron.log"
+    env = dict(inherited_env or {})
+    env["CODEX_HOME"] = str(codex_home)
+    env_parts = [f"CODEX_HOME={shlex.quote(str(codex_home))}"]
+    env_parts.extend(f"{key}={shlex.quote(value)}" for key, value in env.items() if key != "CODEX_HOME")
     return (
         f"{schedule} "
-        f"CODEX_HOME={shlex.quote(str(codex_home))} "
+        f"{' '.join(env_parts)} "
         f"{shlex.quote(str(script))} --once --project-root {shlex.quote(str(project_root))} "
         f">> {shlex.quote(str(log_path))} 2>&1"
     )
@@ -97,13 +149,28 @@ def _install_memory_review_script(codex_home: Path, preview: bool) -> int:
     return 0
 
 
-def _install_cron(project_root: Path, codex_home: Path, schedule: str, preview: bool) -> int:
-    line = _cron_line(project_root, codex_home, schedule)
+def _resolve_install_codex_home(args, project_root: Path) -> Path:
+    if args.codex_home:
+        return Path(args.codex_home).expanduser().resolve()
+    if os.environ.get("CODEX_HOME"):
+        return default_codex_home()
+    if getattr(args, "cron", False):
+        _, existing_env = _read_project_cron_settings(project_root)
+        existing_codex_home = existing_env.get("CODEX_HOME")
+        if existing_codex_home:
+            return Path(os.path.expandvars(existing_codex_home)).expanduser().resolve()
+    return default_codex_home()
+
+
+def _install_cron(project_root: Path, codex_home: Path, schedule: str | None, preview: bool) -> int:
     existing = subprocess.run(["crontab", "-l"], text=True, capture_output=True, check=False)
     current = existing.stdout if existing.returncode == 0 else ""
     managed_marker = f"--project-root {project_root}"
     current_lines = [entry for entry in current.splitlines() if entry.strip()]
-    managed_lines = [entry for entry in current_lines if managed_marker in entry]
+    managed_lines = _managed_cron_lines(project_root, current)
+    existing_schedule, existing_env = _cron_settings_from_line(managed_lines[-1]) if managed_lines else (None, {})
+    resolved_schedule = schedule or existing_schedule or DEFAULT_CRON_SCHEDULE
+    line = _cron_line(project_root, codex_home, resolved_schedule, inherited_env=existing_env)
     if any(entry.strip() == line for entry in managed_lines):
         print("Cron: project-scoped memory-review job already exists")
         return 0
@@ -125,7 +192,7 @@ def _install_cron(project_root: Path, codex_home: Path, schedule: str, preview: 
 def run_install(args) -> int:
     """Install governed knowledge support into a project."""
     project_root = Path(args.project_root).resolve()
-    codex_home = (args.codex_home or default_codex_home()).resolve()
+    codex_home = _resolve_install_codex_home(args, project_root)
     preview = bool(args.preview)
 
     if not project_root.is_dir():

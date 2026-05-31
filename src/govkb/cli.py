@@ -44,7 +44,10 @@ def build_parser() -> argparse.ArgumentParser:
     install_parser.add_argument("--revision", help="Git revision override.")
     install_parser.add_argument("--preview", action="store_true", help="Show install actions without changing files.")
     install_parser.add_argument("--cron", action="store_true", help="Install a project-scoped memory-review cron job.")
-    install_parser.add_argument("--schedule", default="15 8 * * *", help="Cron schedule used with --cron.")
+    install_parser.add_argument(
+        "--schedule",
+        help="Cron schedule used with --cron. Defaults to the existing project schedule when present, otherwise 15 8 * * *.",
+    )
     install_parser.set_defaults(handler=run_install)
 
     validate_parser = subparsers.add_parser("validate", help="Validate a project .governed package.")
