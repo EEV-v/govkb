@@ -261,6 +261,10 @@ def _rewrite_skill_name(skill_text: str, skill_name: str) -> str:
     return "---\n" + "\n".join(lines).rstrip() + "\n---\n\n" + body.strip() + "\n"
 
 
+def _frontmatter_string(value: str) -> str:
+    return json.dumps(value)
+
+
 def _render_wrapped_skill(contract: CapabilityContract, instructions: str, skill_name: str) -> str:
     body = instructions.strip()
     if body.startswith("---"):
@@ -268,7 +272,7 @@ def _render_wrapped_skill(contract: CapabilityContract, instructions: str, skill
     return (
         f"---\n"
         f"name: {skill_name}\n"
-        f"description: {contract.description}\n"
+        f"description: {_frontmatter_string(contract.description)}\n"
         f"---\n\n"
         f"{body}\n"
     )
@@ -278,7 +282,7 @@ def _render_generated_skill(contract: CapabilityContract, reference_files: list[
     lines = [
         "---",
         f"name: {skill_name}",
-        f'description: {json.dumps(contract.description)}',
+        f"description: {_frontmatter_string(contract.description)}",
         "---",
         "",
         f"# {contract.capability_name}",
