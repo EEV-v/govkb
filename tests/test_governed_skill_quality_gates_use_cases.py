@@ -100,6 +100,47 @@ class GovernedSkillQualityGatesUseCaseTests(unittest.TestCase):
             self.assertTrue(any(issue.rule_id == "GSK-TOOLS-001" for issue in result.warnings))
             self.assertTrue(any(issue.rule_id == "GSK-TOOLS-002" for issue in result.warnings))
 
+    def test_uc_7_runtime_tool_paths_and_env_names_are_not_secret_findings(self) -> None:
+        """UC-7: Runtime tool paths and env-variable plumbing are allowed."""
+        with tempfile.TemporaryDirectory() as temp_dir:
+            helper = GovernedSkillQualityGatesTestHelper(self, root=Path(temp_dir))
+            helper.seed_project()
+            capability_root = helper.seed_capability()
+            tools_root = capability_root / "tools"
+            scripts_root = tools_root / "scripts"
+            scripts_root.mkdir(parents=True, exist_ok=True)
+            (tools_root / "README.md").write_text(
+                "\n".join(
+                    [
+                        "# Investigation Tools",
+                        "",
+                        "- Load local credentials from `.config/investigation.env`.",
+                        "- Load local Keycloak credentials from `.config/keycloak-staging.creds`.",
+                        "- Save result files under `investigation-results/`.",
+                        "- Optional local MCP configuration lives at `.vscode/mcp.json`.",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (scripts_root / "query.sh").write_text(
+                "\n".join(
+                    [
+                        "#!/usr/bin/env bash",
+                        'DB_PASSWORD="${PG_PASSWORD:-${PGPASSWORD:-}}"',
+                        'DEFAULT_TOKEN_ENV="SLAPP_API_BEARER_TOKEN"',
+                        'WRITE_CONFIRMATION_TOKEN="I_UNDERSTAND_THIS_WILL_MODIFY_DATA"',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            result = helper.strict_result("release-validation-workflow", activation_required=True)
+            self.assertFalse(
+                any(issue.rule_id in {"GSK-PATH-001", "GSK-SAFETY-001"} for issue in result.errors),
+                [issue.as_dict() for issue in result.errors],
+            )
+
     def test_uc_8_generic_ids_require_justification_and_approval_before_activation(self) -> None:
         """UC-8: Generic ids require justification and approval before activation."""
         with tempfile.TemporaryDirectory() as temp_dir:

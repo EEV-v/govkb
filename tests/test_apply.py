@@ -99,6 +99,44 @@ notes = "initial rollout"
                 {"govkb-demo-project-project-knowledge-steward", "govkb-demo-project-workflow-review"},
             )
 
+    def test_apply_materializes_capability_tools(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            codex_home = Path(temp_dir) / "codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="demo-project", project_name="Demo Project"))
+            run_create_capability(argparse.Namespace(capability_id="Workflow Review", project_root=project_root))
+
+            capability_root = project_root / ".governed" / "capabilities" / "workflow-review"
+            scripts_root = capability_root / "tools" / "scripts"
+            scripts_root.mkdir(parents=True, exist_ok=True)
+            (capability_root / "tools" / "README.md").write_text(
+                "# Workflow Review Tools\n\nRead-only helpers used by the workflow-review capability.\n",
+                encoding="utf-8",
+            )
+            (scripts_root / "check_release.py").write_text(
+                "print('release ok')\n",
+                encoding="utf-8",
+            )
+
+            exit_code = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="tools-test",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(exit_code, 0)
+
+            skill_root = codex_home / "skills" / "govkb-demo-project-workflow-review"
+            self.assertTrue((skill_root / "tools" / "README.md").is_file())
+            self.assertEqual(
+                (skill_root / "tools" / "scripts" / "check_release.py").read_text(encoding="utf-8"),
+                "print('release ok')\n",
+            )
+
     def test_apply_uses_migration_fallback_when_repo_files_are_missing(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "DemoProject"

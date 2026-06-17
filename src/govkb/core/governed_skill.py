@@ -24,8 +24,17 @@ TOKEN_PATTERNS = (
     re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
     re.compile(r"\beyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}\b"),
-    re.compile(r"(?i)\b[A-Z0-9_]*(TOKEN|SECRET|PASSWORD|API_KEY|APIKEY)[A-Z0-9_]*\b\s*[:=]\s*\S+"),
 )
+RUNTIME_ONLY_PATH_REFERENCES = {
+    ".vscode/mcp.json",
+}
+RUNTIME_ONLY_PATH_PREFIXES = (
+    "investigation-results/",
+)
+RUNTIME_ONLY_CONFIG_SUFFIXES = {
+    ".creds",
+    ".env",
+}
 CREDENTIAL_PATH_PATTERNS = (
     re.compile(r"(?:^|[\s`])~/(?:\.ssh|\.aws|\.azure|\.config/gcloud|\.kube)(?:/|[\s`]|$)"),
     re.compile(r"(?:^|[/\s`])\.(?:netrc|npmrc|pypirc|env|env\.local)(?:$|[\s`])"),
@@ -292,6 +301,8 @@ def _check_markdown_paths(result: StrictValidationResult, project_root: Path, ca
                 if target.is_absolute() or value.startswith("~") or ".." in target.parts:
                     result.add("error", "GSK-PATH-001", f"{path}:{line_number}", "package path reference must be safe and relative")
                     continue
+                if _is_runtime_only_path_reference(value):
+                    continue
                 if not (project_root / target).exists() and not (capability_root / target).exists():
                     result.add(
                         "error",
@@ -307,6 +318,15 @@ def _looks_like_path_reference(value: str) -> bool:
     if "/" in value or value.startswith("~") or value.startswith("."):
         return True
     return Path(value).suffix in {".md", ".toml", ".json", ".yaml", ".yml", ".py", ".sh"}
+
+
+def _is_runtime_only_path_reference(value: str) -> bool:
+    normalized = value.rstrip("/")
+    if normalized in RUNTIME_ONLY_PATH_REFERENCES:
+        return True
+    if value.startswith(".config/") and Path(value).suffix in RUNTIME_ONLY_CONFIG_SUFFIXES:
+        return True
+    return any(value.startswith(prefix) for prefix in RUNTIME_ONLY_PATH_PREFIXES)
 
 
 def _check_safety(result: StrictValidationResult, capability_root: Path) -> None:
