@@ -347,12 +347,19 @@ def _build_skill_directory(
         _copy_tree(fallback_root / "references", destination / "references")
         _copy_tree(fallback_root / "agents", destination / "agents")
         _copy_tree(fallback_root / "prompts", destination / "prompts")
+        _copy_tree(fallback_root / "tools", destination / "tools")
         source_mode_parts.append("migration-fallback")
 
     _copy_tree(repo_root / "references", destination / "references")
     _copy_tree(repo_root / "agents", destination / "agents")
     _copy_tree(repo_root / "prompts", destination / "prompts")
-    if (repo_root / "references").is_dir() or (repo_root / "agents").is_dir() or (repo_root / "prompts").is_dir():
+    _copy_tree(repo_root / "tools", destination / "tools")
+    if (
+        (repo_root / "references").is_dir()
+        or (repo_root / "agents").is_dir()
+        or (repo_root / "prompts").is_dir()
+        or (repo_root / "tools").is_dir()
+    ):
         source_mode_parts.append("repo")
 
     skill_source = _repo_skill_source(contract)
