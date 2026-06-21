@@ -19,6 +19,7 @@ from govkb.core.install_state import install_state_path
 from govkb.core.install_state import iso_utc_now
 from govkb.core.install_state import write_install_state
 from govkb.core.memory_scaffold import is_scaffold_bullet
+from govkb.core.memory_policy import feature_specific_decision_reason
 from govkb.core.runtime import govkb_import_root
 
 
@@ -89,7 +90,12 @@ def _split_sections(text: str) -> tuple[list[str], list[tuple[str, list[str]]]]:
     return preamble, sections
 
 
-def _merge_local_memory_additions(repo_text: str, local_text: str, allowed_sections: tuple[str, ...]) -> str | None:
+def _merge_local_memory_additions(
+    repo_text: str,
+    local_text: str,
+    allowed_sections: tuple[str, ...],
+    capability_id: str | None = None,
+) -> str | None:
     """Merge local append-only bullet additions into the staged repo memory file."""
     repo_preamble, repo_sections = _split_sections(repo_text)
     local_preamble, local_sections = _split_sections(local_text)
@@ -116,6 +122,7 @@ def _merge_local_memory_additions(repo_text: str, local_text: str, allowed_secti
             if line.strip().startswith("- ")
             and not is_scaffold_bullet(line)
             and line.strip() not in existing
+            and feature_specific_decision_reason(line, capability_id) is None
         ]
         if additions:
             if merged_section and merged_section[-1].strip():
@@ -160,6 +167,7 @@ def _preserve_local_memory_targets(
                 staged_memory_path.read_text(encoding="utf-8"),
                 local_text,
                 target.sections,
+                contract.capability_id,
             )
             if merged_text is None:
                 continue
