@@ -23,6 +23,8 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
+from govkb.core.memory_policy import feature_specific_decision_reason
+
 
 def resolve_codex_home() -> Path:
     configured = os.environ.get("CODEX_HOME", "").strip()
@@ -1336,11 +1338,14 @@ Success criteria:
 - Ground each accepted or staged lesson in the evidence package or session outcome; do not invent commands, files, approvals, or paths.
 - Session understanding must be semantic, not keyword-driven. English hints may help, but they are not required.
 - Non-coding, mixed-language, review, docs, delivery, QA, and ops sessions can be durable when the outcome is reusable.
+- Generic workflow skills may keep durable system or process knowledge, but not mutable feature decisions.
+- Rewrite route/account/field/status/request-shape/acceptance-criteria/product-behavior details as stable process or architecture guidance before proposing them for generic skills.
 
 Rejection and safety policy:
 - Do not preserve task summaries, ticket state, raw transcript details, credentials, tokens, secrets, customer data, private prompts, or one-off facts.
 - Reject memory-review maintenance chatter, report inspection chatter, cron/scheduler discussion, and local workspace-layout lessons.
 - Reject assistant runtime facts such as sandbox mode, read-only filesystem failures, temp/cache write failures, local CLI invocation quirks, and tool permission artifacts unless the target capability is explicitly about that runtime.
+- Do not auto-apply concrete product behavior, field lists, account/route/status mappings, or acceptance criteria into broad cookbook, QA, delivery, curator, or project-steward skills; stage them for maintainer abstraction or route them to a domain-specific capability.
 - Use bucket=reject for noise, one-off details, sensitive content, or lessons already covered by existing memory.
 - Set sensitivity to `sensitive` when a proposed lesson depends on private, credential-like, customer, or transcript-specific content.
 
@@ -1613,6 +1618,9 @@ def validate_candidate(candidate: dict[str, Any], targets: dict[str, MemoryTarge
     environment_local = environment_local_reason(lesson, str(candidate.get("evidence", "")))
     if environment_local:
         return "reject", environment_local
+    feature_decision = feature_specific_decision_reason(lesson, target.capability_id)
+    if feature_decision:
+        return "stage", feature_decision
     if len(lesson) > 450:
         return "stage", "lesson is too long for direct memory insertion"
 

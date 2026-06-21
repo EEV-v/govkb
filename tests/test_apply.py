@@ -403,6 +403,60 @@ required_sections = ["Working Agreement"]
             )
             self.assertTrue((codex_home / "skills" / "govkb-demo-project-workflow-review").is_dir())
 
+    def test_apply_does_not_preserve_mutable_feature_decision_local_memory(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project_root = Path(temp_dir) / "DemoProject"
+            codex_home = Path(temp_dir) / "codex-home"
+            project_root.mkdir(parents=True, exist_ok=True)
+            run_init(argparse.Namespace(dest=project_root, project_id="demo-project", project_name="Demo Project"))
+
+            first_apply = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="first-pass",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(first_apply, 0)
+
+            steward_memory = (
+                codex_home
+                / "skills"
+                / "govkb-demo-project-project-knowledge-steward"
+                / "references"
+                / "long-term-memory.md"
+            )
+            stale_feature_decision = (
+                "For Trade Error SHARES_AND_CASH corrections, route securities through the selected error "
+                "account and keep CASH_ONLY direct cash movement."
+            )
+            durable_process_lesson = (
+                "Prefer backend-owned enablement settings over duplicating feature flag rules in frontend code."
+            )
+            steward_memory.write_text(
+                steward_memory.read_text(encoding="utf-8").rstrip()
+                + f"\n- {stale_feature_decision}\n- {durable_process_lesson}\n",
+                encoding="utf-8",
+            )
+
+            run_create_capability(argparse.Namespace(capability_id="Workflow Review", project_root=project_root))
+            second_apply = run_codex_apply(
+                argparse.Namespace(
+                    project_root=project_root,
+                    release=None,
+                    revision="second-pass",
+                    codex_home=codex_home,
+                    preview=False,
+                )
+            )
+            self.assertEqual(second_apply, 0)
+
+            rematerialized = steward_memory.read_text(encoding="utf-8")
+            self.assertNotIn(stale_feature_decision, rematerialized)
+            self.assertIn(durable_process_lesson, rematerialized)
+
     def test_apply_does_not_preserve_scaffold_placeholder_bullets(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             project_root = Path(temp_dir) / "DemoProject"

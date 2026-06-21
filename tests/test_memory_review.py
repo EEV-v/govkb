@@ -1098,6 +1098,75 @@ required_sections = ["Working Agreement"]
 
         self.assertIsNone(reason)
 
+    def test_packaged_scheduler_stages_mutable_feature_decision_lessons(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        target = scheduler.MemoryTarget(
+            skill="govkb-clearing-clearing-feature-cookbook",
+            capability_id="clearing-feature-cookbook",
+            project_id="clearing",
+            path=Path("/tmp/long-term-memory.md"),
+            requires_explicit_acceptance=False,
+            headings=("Stable Workflows",),
+            content="# Feature Cookbook\n\n## Stable Workflows\n\n- durable note\n",
+            aliases=("$clearing-feature-cookbook",),
+            hints=("feature",),
+            negative_hints=(),
+            project_root=Path("/tmp/Clearing"),
+        )
+        candidate = {
+            "target_skill": target.skill,
+            "memory_section": "Stable Workflows",
+            "lesson": (
+                "For Trade Error SHARES_AND_CASH corrections, route securities through the selected error "
+                "account and keep CASH_ONLY direct cash movement."
+            ),
+            "evidence": "Implemented one correction workflow from feature feedback.",
+            "confidence": 0.95,
+            "durability": "high",
+            "bucket": "auto_apply",
+            "explicit_acceptance": False,
+            "sensitivity": "clean",
+        }
+
+        bucket, reason = scheduler.validate_candidate(candidate, {target.skill: target})
+
+        self.assertEqual(bucket, "stage")
+        self.assertIn("mutable feature or product behavior", reason)
+
+    def test_packaged_scheduler_auto_applies_abstract_system_guidance(self) -> None:
+        scheduler = load_packaged_memory_review_script()
+        target = scheduler.MemoryTarget(
+            skill="govkb-clearing-clearing-feature-cookbook",
+            capability_id="clearing-feature-cookbook",
+            project_id="clearing",
+            path=Path("/tmp/long-term-memory.md"),
+            requires_explicit_acceptance=False,
+            headings=("Stable Workflows",),
+            content="# Feature Cookbook\n\n## Stable Workflows\n\n- durable note\n",
+            aliases=("$clearing-feature-cookbook",),
+            hints=("feature",),
+            negative_hints=(),
+            project_root=Path("/tmp/Clearing"),
+        )
+        candidate = {
+            "target_skill": target.skill,
+            "memory_section": "Stable Workflows",
+            "lesson": (
+                "For correction workflows that move both positions and cash, separate position lots from "
+                "cash legs in the implementation plan and make the accounting owner explicit before coding."
+            ),
+            "evidence": "The durable lesson was generalized from a completed implementation.",
+            "confidence": 0.95,
+            "durability": "high",
+            "bucket": "auto_apply",
+            "explicit_acceptance": False,
+            "sensitivity": "clean",
+        }
+
+        bucket, reason = scheduler.validate_candidate(candidate, {target.skill: target})
+
+        self.assertEqual((bucket, reason), ("auto_apply", "strict gates passed"))
+
     def test_packaged_scheduler_prescreens_verified_implementation_sessions(self) -> None:
         scheduler = load_packaged_memory_review_script()
         with tempfile.TemporaryDirectory() as temp_dir:
